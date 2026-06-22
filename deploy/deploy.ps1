@@ -5,7 +5,7 @@
 # Requires OpenSSH (scp/ssh) — built into Windows 10/11.
 param(
   [Parameter(Mandatory=$true)][string]$KeyPath,      # c:\Users\reian\.ssh\kofc-advisor-key.pem
-  [Parameter(Mandatory=$true)][string]$RemoteHost    # ec2-user@3.150.49.91
+  [Parameter(Mandatory=$true)][string]$RemoteHost    # ec2-user@3.132.32.218
 )
 
 $ErrorActionPreference = "Stop"

@@ -38,6 +38,23 @@
   .reasons { font-size:12px; color:var(--sub); }
   .reasons span { display:inline-block; background:#fdf6e3; color:var(--warn); border-radius:10px; padding:2px 8px; margin:2px 4px 2px 0; }
   .status-msg { font-size:12px; margin-top:8px; }
+  .md { font-size:13px; line-height:1.5; color:#222; }
+  .md > :first-child { margin-top:0; }
+  .md > :last-child { margin-bottom:0; }
+  .md p { margin:0 0 8px; }
+  .md ul, .md ol { margin:0 0 8px; padding-left:20px; }
+  .md li { margin:2px 0; }
+  .md h3, .md h4, .md h5, .md h6 { margin:10px 0 6px; font-size:13px; font-weight:700; color:var(--navy); line-height:1.3; }
+  .md a { color:var(--blue); }
+  .md code { background:#f0f2f6; border:1px solid var(--border); border-radius:4px; padding:1px 4px; font-size:12px; font-family:ui-monospace,Menlo,Consolas,monospace; }
+  .md blockquote { margin:0 0 8px; padding:2px 0 2px 10px; border-left:3px solid var(--border); color:var(--sub); }
+  .ans-wrap { border:1px solid var(--border); border-radius:6px; overflow:hidden; }
+  .ans-wrap textarea { border:none; border-radius:0; min-height:100px; }
+  .md-toolbar { display:flex; gap:3px; flex-wrap:wrap; background:#eef2f9; border-bottom:1px solid var(--border); padding:5px; }
+  .md-toolbar button { background:#fff; border:1px solid var(--border); border-radius:4px; min-width:28px; height:26px; padding:0 7px; font-size:12px; color:var(--navy); cursor:pointer; line-height:1; }
+  .md-toolbar button:hover { background:var(--blue); color:#fff; border-color:var(--blue); }
+  .md-preview-label { font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:var(--sub); padding:8px 10px 0; background:#fbfcfe; }
+  .md-preview { padding:6px 10px 10px; background:#fbfcfe; min-height:24px; }
 </style>
 </head>
 <body>
@@ -71,6 +88,68 @@ const API = '../api';
 let status = 'new';
 const $ = (id) => document.getElementById(id);
 
+// --- Markdown (escape-first; safe to inject) ---------------------------------
+function mdToHtml(src) {
+  const escm = (s) => (s || '').replace(/[&<>]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[c]));
+  const inline = (s) => escm(s)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/__([^_]+)__/g, '<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*\s][^*]*?)\*(?!\*)/g, '$1<em>$2</em>')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+  const lines = (src || '').replace(/\r\n/g, '\n').split('\n');
+  let html = '', list = null;
+  const closeList = () => { if (list) { html += '</' + list + '>'; list = null; } };
+  for (const raw of lines) {
+    const line = raw.replace(/\s+$/, '');
+    if (!line.trim()) { closeList(); continue; }
+    let m;
+    if (m = line.match(/^(#{1,6})\s+(.*)$/)) { closeList(); const lvl = Math.min(m[1].length + 2, 6); html += '<h' + lvl + '>' + inline(m[2]) + '</h' + lvl + '>'; continue; }
+    if (m = line.match(/^\s*[-*+]\s+(.*)$/)) { if (list !== 'ul') { closeList(); html += '<ul>'; list = 'ul'; } html += '<li>' + inline(m[1]) + '</li>'; continue; }
+    if (m = line.match(/^\s*\d+[.)]\s+(.*)$/)) { if (list !== 'ol') { closeList(); html += '<ol>'; list = 'ol'; } html += '<li>' + inline(m[1]) + '</li>'; continue; }
+    if (m = line.match(/^\s*>\s?(.*)$/)) { closeList(); html += '<blockquote>' + inline(m[1]) + '</blockquote>'; continue; }
+    closeList(); html += '<p>' + inline(line) + '</p>';
+  }
+  closeList();
+  return html;
+}
+
+// --- Markdown toolbar helpers ------------------------------------------------
+function linePrefix(ta, prefix) {
+  const s = ta.selectionStart, val = ta.value;
+  const e = ta.selectionEnd;
+  const start = val.lastIndexOf('\n', s - 1) + 1;
+  const block = val.slice(start, e);
+  const prefixed = block.split('\n').map(l => prefix + l).join('\n');
+  ta.value = val.slice(0, start) + prefixed + val.slice(e);
+  const np = start + prefixed.length;
+  ta.setSelectionRange(np, np);
+}
+function applyMd(ta, kind) {
+  const s = ta.selectionStart, e = ta.selectionEnd, val = ta.value, sel = val.slice(s, e);
+  const wrap = (pre, post, ph) => {
+    const t = sel || ph;
+    ta.value = val.slice(0, s) + pre + t + post + val.slice(e);
+    ta.setSelectionRange(s + pre.length, s + pre.length + t.length);
+  };
+  switch (kind) {
+    case 'bold': wrap('**', '**', 'bold text'); break;
+    case 'italic': wrap('*', '*', 'italic text'); break;
+    case 'code': wrap('`', '`', 'code'); break;
+    case 'h3': linePrefix(ta, '### '); break;
+    case 'ul': linePrefix(ta, '- '); break;
+    case 'ol': linePrefix(ta, '1. '); break;
+    case 'link': {
+      const t = sel || 'link text';
+      ta.value = val.slice(0, s) + '[' + t + '](https://)' + val.slice(e);
+      const pos = s + t.length + 3;
+      ta.setSelectionRange(pos, pos + 8);
+      break;
+    }
+  }
+  ta.focus();
+}
+
 async function loadMetrics() {
   try {
     const m = await (await fetch(`${API}/metrics.php`, { credentials:'same-origin' })).json();
@@ -101,8 +180,10 @@ async function loadQueue() {
 }
 
 function renderItem(it) {
-  const pending = it.status === 'new';
-  const suggested = it.suggested_answer || it.answer_text || '';
+  const promoted = it.status === 'promoted';
+  const seed = it.final_answer || it.suggested_answer || it.answer_text || '';
+  const editLabel = promoted ? 'Vetted answer (edit and re-save)' : 'Approved answer to promote (edit as needed)';
+  const promoteLabel = promoted ? 'Update vetted' : 'Promote to Vetted';
   return `
   <div class="item" id="it-${it.id}">
     <div class="row">
@@ -114,17 +195,29 @@ function renderItem(it) {
       <span>· status: ${it.status}</span>
     </div>
     ${it.question_text ? `<div class="q"><b>Q:</b> ${esc(it.question_text)}</div>` : ''}
-    <div class="q"><b>AI answer:</b> ${esc(it.answer_text)}</div>
+    <div class="q"><b>AI answer:</b></div>
+    <div class="md" id="ai-${it.id}">${mdToHtml(it.answer_text)}</div>
     ${it.comment ? `<div class="q"><b>Agent note:</b> ${esc(it.comment)}</div>` : ''}
-    ${pending ? `
-      <label>Approved answer to promote (edit as needed)</label>
-      <textarea id="ans-${it.id}">${esc(suggested)}</textarea>
-      <div class="acts">
-        <button class="promote" id="pro-${it.id}">Promote to Vetted</button>
-        <button class="dismiss" id="dis-${it.id}">Dismiss</button>
+    <label>${editLabel}</label>
+    <div class="ans-wrap">
+      <div class="md-toolbar" id="tb-${it.id}">
+        <button type="button" data-md="bold" title="Bold"><b>B</b></button>
+        <button type="button" data-md="italic" title="Italic"><i>I</i></button>
+        <button type="button" data-md="code" title="Inline code">&lt;/&gt;</button>
+        <button type="button" data-md="h3" title="Heading">H</button>
+        <button type="button" data-md="ul" title="Bulleted list">&bull;</button>
+        <button type="button" data-md="ol" title="Numbered list">1.</button>
+        <button type="button" data-md="link" title="Link">&#128279;</button>
       </div>
-      <div class="status-msg" id="msg-${it.id}"></div>
-    ` : ''}
+      <textarea id="ans-${it.id}">${esc(seed)}</textarea>
+      <div class="md-preview-label">Preview</div>
+      <div class="md-preview md" id="prev-${it.id}"></div>
+    </div>
+    <div class="acts">
+      <button class="promote" id="pro-${it.id}">${promoteLabel}</button>
+      <button class="dismiss" id="dis-${it.id}">Dismiss</button>
+    </div>
+    <div class="status-msg" id="msg-${it.id}"></div>
   </div>`;
 }
 
@@ -132,6 +225,13 @@ function wireItem(id) {
   const pro = $(`pro-${id}`), dis = $(`dis-${id}`);
   if (pro) pro.onclick = () => act(id, 'promote', $(`ans-${id}`).value);
   if (dis) dis.onclick = () => act(id, 'dismiss');
+  const ta = $(`ans-${id}`), prev = $(`prev-${id}`), tb = $(`tb-${id}`);
+  if (ta && prev) {
+    const upd = () => { prev.innerHTML = ta.value.trim() ? mdToHtml(ta.value) : '<span class="muted">Nothing to preview yet.</span>'; };
+    ta.addEventListener('input', upd);
+    upd();
+    if (tb) tb.querySelectorAll('button').forEach(b => b.onclick = () => { applyMd(ta, b.dataset.md); upd(); });
+  }
 }
 
 async function act(id, action, finalAnswer) {

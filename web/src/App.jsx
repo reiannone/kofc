@@ -3,7 +3,42 @@ import {
   Shield, Send, CheckCircle2, XCircle, AlertTriangle, Loader2, ClipboardCheck,
   Mic, Square, Volume2, VolumeX, MessageSquare, Sparkles, Plus, ThumbsUp, ThumbsDown, LogOut,
 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { apiPost } from './api.js';
+
+// Strip Markdown syntax so text-to-speech doesn't read "asterisk asterisk".
+function stripMd(s) {
+  return (s || '')
+    .replace(/```[\s\S]*?```/g, ' ')      // fenced code blocks
+    .replace(/`([^`]+)`/g, '$1')          // inline code
+    .replace(/\*\*([^*]+)\*\*/g, '$1')    // bold
+    .replace(/__([^_]+)__/g, '$1')        // bold
+    .replace(/\*([^*]+)\*/g, '$1')        // italic
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // links -> link text
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')   // headings
+    .replace(/^\s*[-*+]\s+/gm, '')        // bullet markers
+    .replace(/^\s*\d+[.)]\s+/gm, '')      // numbered markers
+    .replace(/^\s*>\s?/gm, '');           // blockquote markers
+}
+
+// Render assistant Markdown safely (react-markdown does not emit raw HTML).
+function Md({ text }) {
+  return (
+    <div className="md">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          a: ({ node, ...props }) => (
+            <a {...props} target="_blank" rel="noopener noreferrer" />
+          ),
+        }}
+      >
+        {text || ''}
+      </ReactMarkdown>
+    </div>
+  );
+}
 
 const C = {
   navy: '#1b2a4a', blue: '#2f5597', bg: '#f5f6f8', card: '#ffffff',
@@ -77,9 +112,10 @@ export default function App({ user, onLogout }) {
     setListening(false);
   }
   function speak(text) {
-    if (!('speechSynthesis' in window) || !text) return;
+    const clean = stripMd(text);
+    if (!('speechSynthesis' in window) || !clean) return;
     window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
+    const u = new SpeechSynthesisUtterance(clean);
     u.lang = 'en-US';
     window.speechSynthesis.speak(u);
   }
@@ -238,14 +274,14 @@ export default function App({ user, onLogout }) {
               <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start', marginBottom: 10 }}>
                 <div style={{
                   maxWidth: '85%', padding: '10px 12px', borderRadius: 12, fontSize: 13, lineHeight: 1.5,
-                  whiteSpace: 'pre-wrap',
+                  whiteSpace: m.role === 'user' ? 'pre-wrap' : 'normal',
                   background: m.role === 'user' ? C.userBubble : C.botBubble,
                   color: m.role === 'user' ? '#fff' : C.text,
                   border: m.role === 'user' ? 'none' : `1px solid ${C.border}`,
                   borderBottomRightRadius: m.role === 'user' ? 2 : 12,
                   borderBottomLeftRadius: m.role === 'user' ? 12 : 2,
                 }}>
-                  {m.content}
+                  {m.role === 'assistant' ? <Md text={m.content} /> : m.content}
                   {m.role === 'assistant' && (
                     <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
                       <button onClick={() => speak(m.content)} title="Read aloud"
@@ -432,7 +468,25 @@ export default function App({ user, onLogout }) {
         </div>
       )}
 
-      <style>{`.spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      <style>{`
+        .spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+        .md > :first-child{margin-top:0}
+        .md > :last-child{margin-bottom:0}
+        .md p{margin:0 0 8px}
+        .md ul,.md ol{margin:0 0 8px;padding-left:20px}
+        .md li{margin:2px 0}
+        .md li > p{margin:0}
+        .md h1,.md h2,.md h3,.md h4,.md h5,.md h6{margin:10px 0 6px;font-size:13px;font-weight:700;color:${C.navy};line-height:1.3}
+        .md h1{font-size:15px}.md h2{font-size:14px}
+        .md a{color:${C.blue};text-decoration:underline}
+        .md code{background:#f0f2f6;border:1px solid ${C.border};border-radius:4px;padding:1px 4px;font-size:12px;font-family:ui-monospace,Menlo,Consolas,monospace}
+        .md pre{background:#f0f2f6;border:1px solid ${C.border};border-radius:6px;padding:10px;overflow:auto;margin:0 0 8px}
+        .md pre code{background:none;border:none;padding:0}
+        .md blockquote{margin:0 0 8px;padding:2px 0 2px 10px;border-left:3px solid ${C.border};color:${C.sub}}
+        .md table{border-collapse:collapse;margin:0 0 8px;font-size:12px}
+        .md th,.md td{border:1px solid ${C.border};padding:4px 8px;text-align:left}
+        .md hr{border:none;border-top:1px solid ${C.border};margin:10px 0}
+      `}</style>
     </div>
   );
 }
