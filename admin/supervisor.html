@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>KofC Advisor — Supervisor Dashboard</title>
+<style>
+  :root { --navy:#1b2a4a; --blue:#2f5597; --bg:#f5f6f8; --card:#fff; --border:#dfe3ea; --sub:#666; --no:#b02a37; --ok:#1e7e34; --warn:#b8860b; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,sans-serif; background:var(--bg); color:#222; }
+  header { background:var(--navy); color:#fff; padding:14px 24px; display:flex; align-items:center; gap:12px; }
+  header h1 { font-size:16px; margin:0; font-weight:600; }
+  header a { color:#cfe; font-size:12px; text-decoration:none; margin-left:auto; }
+  .wrap { max-width:1000px; margin:24px auto; padding:0 16px; }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:22px; }
+  .tile { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:16px; }
+  .tile .n { font-size:26px; font-weight:700; color:var(--navy); }
+  .tile .l { font-size:12px; color:var(--sub); margin-top:4px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:20px; margin-bottom:20px; }
+  h2 { font-size:14px; color:var(--navy); margin:0 0 14px; }
+  .tabs { display:flex; gap:6px; margin-bottom:14px; }
+  .tabs button { background:#eef2f9; color:var(--sub); border:none; border-radius:6px; padding:6px 12px; font-size:12px; cursor:pointer; }
+  .tabs button.on { background:var(--blue); color:#fff; }
+  .item { border:1px solid var(--border); border-radius:8px; padding:14px; margin-bottom:12px; }
+  .row { display:flex; gap:8px; align-items:center; font-size:12px; color:var(--sub); margin-bottom:8px; flex-wrap:wrap; }
+  .vote { font-weight:700; padding:2px 8px; border-radius:10px; font-size:11px; }
+  .vote.up { background:#eaf6ec; color:var(--ok); }
+  .vote.down { background:#fdeaec; color:var(--no); }
+  .tag { background:#eef2f9; color:var(--navy); padding:2px 8px; border-radius:10px; font-size:11px; }
+  .q { font-size:13px; margin:6px 0; }
+  .q b { color:var(--navy); }
+  textarea { width:100%; min-height:80px; padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-size:13px; font-family:inherit; resize:vertical; }
+  label { font-size:11px; color:var(--sub); display:block; margin:8px 0 4px; }
+  .acts { display:flex; gap:8px; margin-top:10px; }
+  button.promote { background:var(--ok); color:#fff; border:none; border-radius:6px; padding:8px 14px; font-size:13px; cursor:pointer; }
+  button.dismiss { background:transparent; color:var(--no); border:1px solid var(--border); border-radius:6px; padding:8px 14px; font-size:13px; cursor:pointer; }
+  .muted { color:var(--sub); font-size:13px; }
+  .reasons { font-size:12px; color:var(--sub); }
+  .reasons span { display:inline-block; background:#fdf6e3; color:var(--warn); border-radius:10px; padding:2px 8px; margin:2px 4px 2px 0; }
+  .status-msg { font-size:12px; margin-top:8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>KofC Advisor — Supervisor Dashboard</h1>
+  <a href="index.html">Knowledge Base Admin →</a>
+</header>
+<div class="wrap">
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="card">
+    <h2>Down-vote reasons</h2>
+    <div class="reasons" id="reasons"><span class="muted">—</span></div>
+  </div>
+
+  <div class="card">
+    <h2>Review queue</h2>
+    <div class="tabs" id="tabs">
+      <button data-s="new" class="on">Pending</button>
+      <button data-s="promoted">Promoted</button>
+      <button data-s="dismissed">Dismissed</button>
+      <button data-s="all">All</button>
+    </div>
+    <div id="queue"><div class="muted">Loading…</div></div>
+  </div>
+
+</div>
+<script>
+const API = '../api';
+let status = 'new';
+const $ = (id) => document.getElementById(id);
+
+async function loadMetrics() {
+  try {
+    const m = await (await fetch(`${API}/metrics.php`, { credentials:'same-origin' })).json();
+    const tiles = [
+      ['Pending review', m.pending_review ?? 0],
+      ['Positive rate', m.positive_rate != null ? m.positive_rate + '%' : '—'],
+      ['Total feedback', m.feedback_total ?? 0],
+      ['Vetted exemplars', m.vetted_exemplars ?? 0],
+      ['Rec. avg rating', m.rec_avg_rating != null ? m.rec_avg_rating + ' / 5' : '—'],
+    ];
+    $('tiles').innerHTML = tiles.map(([l,n]) => `<div class="tile"><div class="n">${n}</div><div class="l">${l}</div></div>`).join('');
+    $('reasons').innerHTML = (m.top_reasons && m.top_reasons.length)
+      ? m.top_reasons.map(r => `<span>${r.reason_code} · ${r.c}</span>`).join('')
+      : '<span class="muted">No down-votes yet.</span>';
+  } catch (e) { $('tiles').innerHTML = `<div class="muted">Could not load metrics: ${e.message}</div>`; }
+}
+
+function esc(s) { return (s||'').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+async function loadQueue() {
+  $('queue').innerHTML = '<div class="muted">Loading…</div>';
+  try {
+    const data = await (await fetch(`${API}/feedback-list.php?status=${status}`, { credentials:'same-origin' })).json();
+    if (!data.items || data.items.length === 0) { $('queue').innerHTML = '<div class="muted">Nothing here.</div>'; return; }
+    $('queue').innerHTML = data.items.map(renderItem).join('');
+    data.items.forEach(it => wireItem(it.id));
+  } catch (e) { $('queue').innerHTML = `<div class="muted">Error: ${e.message}</div>`; }
+}
+
+function renderItem(it) {
+  const pending = it.status === 'new';
+  const suggested = it.suggested_answer || it.answer_text || '';
+  return `
+  <div class="item" id="it-${it.id}">
+    <div class="row">
+      <span class="vote ${it.vote}">${it.vote === 'up' ? '\u25B2 up' : '\u25BC down'}</span>
+      <span class="tag">${it.ref_type}</span>
+      ${it.reason_code ? `<span class="tag">${esc(it.reason_code)}</span>` : ''}
+      <span>by ${esc(it.agent_id)}</span>
+      <span>· ${esc((it.created_at||'').replace('T',' '))}</span>
+      <span>· status: ${it.status}</span>
+    </div>
+    ${it.question_text ? `<div class="q"><b>Q:</b> ${esc(it.question_text)}</div>` : ''}
+    <div class="q"><b>AI answer:</b> ${esc(it.answer_text)}</div>
+    ${it.comment ? `<div class="q"><b>Agent note:</b> ${esc(it.comment)}</div>` : ''}
+    ${pending ? `
+      <label>Approved answer to promote (edit as needed)</label>
+      <textarea id="ans-${it.id}">${esc(suggested)}</textarea>
+      <div class="acts">
+        <button class="promote" id="pro-${it.id}">Promote to Vetted</button>
+        <button class="dismiss" id="dis-${it.id}">Dismiss</button>
+      </div>
+      <div class="status-msg" id="msg-${it.id}"></div>
+    ` : ''}
+  </div>`;
+}
+
+function wireItem(id) {
+  const pro = $(`pro-${id}`), dis = $(`dis-${id}`);
+  if (pro) pro.onclick = () => act(id, 'promote', $(`ans-${id}`).value);
+  if (dis) dis.onclick = () => act(id, 'dismiss');
+}
+
+async function act(id, action, finalAnswer) {
+  const msg = $(`msg-${id}`); if (msg) msg.textContent = 'Working…';
+  try {
+    const res = await fetch(`${API}/feedback-review.php`, {
+      method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin',
+      body: JSON.stringify({ id, action, final_answer: finalAnswer })
+    });
+    const data = await res.json();
+    if (!res.ok) { if (msg) msg.textContent = data.error || 'failed'; return; }
+    loadMetrics(); loadQueue();
+  } catch (e) { if (msg) msg.textContent = 'Error: ' + e.message; }
+}
+
+$('tabs').querySelectorAll('button').forEach(b => b.onclick = () => {
+  status = b.dataset.s;
+  $('tabs').querySelectorAll('button').forEach(x => x.classList.remove('on'));
+  b.classList.add('on');
+  loadQueue();
+});
+
+loadMetrics();
+loadQueue();
+</script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+N.J.A.C. 11:17-2.2 — License Authorities
+Source: New Jersey Administrative Code, Title 11 (Insurance), Chapter 17 (Producer Licensing), Subchapter 2 (Licensing Rules).
+Citation: N.J. Admin. Code § 11:17-2.2. Amended by 47 N.J.R. 1872(a), effective 7/20/2015.
+Retrieved 2026-06-19 from law.cornell.edu (LII). Public domain. Verify against the official N.J.A.C. / NJ DOBI before relying on it; regulations are updated quarterly.
+
+(a) Producers licensed in accordance with the Act and this chapter shall be authorized to write the kinds of insurance designated, if qualified by each authority set forth below.
+
+1. Life Authority: All coverages defined as "life insurance" in N.J.S.A. 17B:17-3; and all coverages defined as an "annuity" in N.J.S.A. 17B:17-5.
+
+2. Accident and health or sickness Authority: all coverages defined as "health insurance" in N.J.S.A. 17B:17-4.
+
+3. Property Authority: All coverages written by authorized insurers for direct and consequential loss or damage to property of any kind including fire and allied lines, earthquake, growing crops, ocean marine, inland marine, boiler and machinery, credit property, burglary and theft, glass, sprinkler leakage and water damage, livestock, smoke or smudge, physical loss to buildings, radioactive contamination, mechanical breakdown or power failure, and other property loss.
+
+4. Casualty Authority: All coverages written by authorized insurers for coverage against legal liability from death, disability, injury or damage to real or personal property including employers' liability, automobile liability bodily injury, automobile liability property damage, other liability, credit casualty, other casualty loss, fidelity and surety, workers' compensation, mortgage guaranty insurance and municipal bond insurance.
+
+5. Surplus Lines Authority: All coverages written by unauthorized insurers and defined as "surplus lines" in N.J.S.A. 17:22-6.42.
+
+6. Title Insurance Authority: All policies of insurance guaranteeing or indemnifying owners of real property or others interested therein against loss or damage suffered by reason of liens, encumbrances upon, defects in or the unmarketability of the title to said property, guaranteeing, warranting or otherwise insuring by a title insurance company the correctness of searches relating to the title to real property, or doing any real business in substance equivalent to any of the foregoing.
+
+7. Variable life and variable annuity: all coverages defined as a "contract on a variable basis" pursuant to N.J.S.A. 17B:28-1.
+
+8. Personal lines Authority: All property and casualty insurance coverage sold to individuals and families for primarily noncommercial purposes.
+
+9. Limited lines Authority includes: i. Bail bonds; ii. Car rental insurance; iii. Credit insurance; iv. Pet insurance; v. Travel insurance; vi. Group mortgage cancellation; vii. Legal expense insurance; viii. Portable electronics insurance; ix. Special nonresident limited lines (limited to authorities for which the applicant is licensed in his or her home state and for which there is no corresponding authority in this State); x. Other nonresident limited lines (limited to limited line authorities in which the applicant is licensed in his or her home state and for which there is no corresponding authority in this State).
+
+(b) The Department is authorized to issue nonresident licenses containing the above authorities regardless of whether the authority conferred by the nonresident applicant's home state license precisely matches the kinds or lines of insurance described above, so long as they are generally comparable. No nonresident licensee shall be authorized to transact business for any kind or line of insurance for which the licensee is not authorized in its home state.
+
+(c) No person shall be authorized to transact business regarding contracts on a variable basis unless that person also holds a securities license as required by this State or any other state or Federal law, as applicable, and maintains an active producer license in this State with variable life and variable annuity authority.
+
+[KofC relevance: Term life and whole life both fall under the Life Authority (1). Long-term care insurance is "health insurance" and falls under the Accident and Health or Sickness Authority (2) — a separate line of authority from Life.]

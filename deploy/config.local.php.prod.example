@@ -1,0 +1,20 @@
+<?php
+/**
+ * PRODUCTION secrets. Install at /etc/kofc/config.local.php on the EC2 box.
+ *   sudo mkdir -p /etc/kofc
+ *   sudo install -o root -g apache -m 0640 this-file /etc/kofc/config.local.php
+ * Never commit. Readable only by root and the apache group.
+ */
+return [
+    // New database on the existing StockLoyal RDS, with a KofC-scoped DB user.
+    'db_host' => 'YOUR-STOCKLOYAL-RDS-ENDPOINT.rds.amazonaws.com',
+    'db_name' => 'kofc_advisor',
+    'db_user' => 'kofc_app',
+    'db_pass' => 'STRONG-DB-PASSWORD',
+
+    'openai_api_key' => 'sk-...your OpenAI key...',
+    'ai_model' => 'gpt-4o-mini',
+    'ai_mock'  => false,
+
+    'auth_disabled' => false,   // MUST be false in any hosted environment
+];

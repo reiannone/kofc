@@ -1,0 +1,15 @@
+# dependencies
+web/node_modules/
+
+# build output (optional — drop this line if your deploy serves web/dist directly)
+web/dist/
+
+# secrets
+api/config.local.php
+docs/OpenAI API Key.txt
+*.pem
+.env
+
+# os/editor cruft
+Thumbs.db
+.DS_Store

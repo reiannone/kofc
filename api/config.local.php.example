@@ -1,0 +1,15 @@
+<?php
+/**
+ * Copy this file to config.local.php (same folder) and fill in.
+ * config.local.php is gitignored — never commit it.
+ */
+return [
+    'db_host' => '127.0.0.1',
+    'db_name' => 'kofc_advisor',
+    'db_user' => 'root',
+    'db_pass' => '',               // XAMPP default is blank
+
+    'openai_api_key' => '',        // your OpenAI key (sk-... or sk-proj-...)
+    'ai_model' => 'gpt-4o-mini',   // bump to 'gpt-4o' or 'gpt-4.1' for stronger reasoning
+    'ai_mock' => true,             // true = no API calls / no cost; flip to false to go live
+];
