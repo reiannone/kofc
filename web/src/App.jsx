@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   Shield, Send, CheckCircle2, XCircle, AlertTriangle, Loader2, ClipboardCheck,
-  Mic, Square, Volume2, VolumeX, MessageSquare, Sparkles, Plus, ThumbsUp, ThumbsDown, LogOut,
+  Mic, Square, Volume2, VolumeX, MessageSquare, Sparkles, Plus, ThumbsUp, ThumbsDown, LogOut, Settings,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -231,7 +231,7 @@ export default function App({ user, onLogout }) {
     <div style={{ fontFamily: 'system-ui, sans-serif', background: C.bg, height: '100vh', display: 'flex', flexDirection: 'column', color: C.text }}>
       <header style={{ background: C.navy, color: '#fff', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
         <Shield size={18} />
-        <strong style={{ fontSize: 15 }}>KofC AI Advisor</strong>
+        <strong style={{ fontSize: 15 }}>KofC AI Agent</strong>
         {tab === 'advisor' && (
           <button onClick={newConversation} title="New conversation"
             style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', opacity: 0.9, display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
@@ -246,6 +246,10 @@ export default function App({ user, onLogout }) {
         {user && (
           <span style={{ fontSize: 12, opacity: 0.85, marginLeft: 8 }}>{user.username}</span>
         )}
+        <a href="/admin/index.html" title="Admin console"
+          style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', opacity: 0.9, display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, textDecoration: 'none', marginLeft: 8 }}>
+          <Settings size={16} /> Admin
+        </a>
         {onLogout && (
           <button onClick={onLogout} title="Sign out"
             style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', opacity: 0.9, display: 'flex' }}>
@@ -255,7 +259,7 @@ export default function App({ user, onLogout }) {
       </header>
 
       <div style={{ display: 'flex', background: C.bg, borderBottom: `1px solid ${C.border}` }}>
-        {tabBtn('advisor', 'Advisor', MessageSquare)}
+        {tabBtn('advisor', 'AI Agent', MessageSquare)}
         {tabBtn('recommend', 'Recommend', Sparkles)}
       </div>
 
