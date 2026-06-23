@@ -13,3 +13,7 @@ docs/OpenAI API Key.txt
 # os/editor cruft
 Thumbs.db
 .DS_Store
+# never commit secrets
+sql/KofC Credentials.txt
+*Credentials*
+*.secret
