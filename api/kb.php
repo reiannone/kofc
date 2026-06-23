@@ -1,13 +1,17 @@
 <?php
 /**
- * kb.php — retrieval over embedded KofC source documents, collection-aware.
+ * kb.php — retrieval over embedded KofC source documents, collection-aware and WEIGHTED.
  * MySQL + PHP cosine: zero new infra. Swap kofc_kb_context's scan for a vector index later.
- * Retrieval pulls a balanced mix across collections and labels them in AUTHORITY ORDER
- * (regulations > policy > sales), so the model knows which sources are binding.
+ *
+ * Selection (kofc_kb_context): score every chunk, drop sub-floor noise, multiply by the
+ * collection weight, then choose by weighted score — guaranteeing per-collection minimums
+ * (e.g. binding regulations) and capping each collection so none monopolizes the budget.
+ * Output is grouped in AUTHORITY ORDER and labeled, so the model still knows which sources bind.
  */
 
 define('KOFC_EMBED_MODEL', 'text-embedding-3-small');
-define('KOFC_DEFAULT_MIX', json_encode(['regulations' => 2, 'policy' => 2, 'vetted' => 2, 'sales' => 1]));
+// Fallback only — real caps/weights/floor live in collections.php (and any supervisor override).
+define('KOFC_DEFAULT_MIX', json_encode(['regulations' => 3, 'policy' => 3, 'vetted' => 3, 'sales' => 2]));
 
 function kofc_embed(string $text): array
 {
@@ -32,6 +36,34 @@ function kofc_embed(string $text): array
     return $data['data'][0]['embedding'] ?? [];
 }
 
+/**
+ * Supervisor-saved retrieval overrides (weights/floor/mix/min/k), or [] when unset.
+ * Fails safe to file defaults if the kb_tuning table doesn't exist yet.
+ */
+function kofc_kb_tuning(): array
+{
+    try {
+        $row = kofc_db()->query('SELECT config FROM kb_tuning WHERE id = 1')->fetchColumn();
+        if ($row) { $c = json_decode($row, true); if (is_array($c)) return $c; }
+    } catch (Throwable $e) {
+        // table absent or db error -> defaults apply
+    }
+    return [];
+}
+
+/** The collections.php tuning defaults, for the supervisor UI's "reset" and as the floor of merges. */
+function kofc_kb_defaults(): array
+{
+    $meta = require __DIR__ . '/collections.php';
+    return [
+        'weights' => $meta['weights'] ?? [],
+        'floor'   => $meta['floor']   ?? 0.0,
+        'mix'     => $meta['mix']     ?? [],
+        'min'     => $meta['min']     ?? [],
+        'k'       => $meta['k']       ?? 6,
+    ];
+}
+
 function kofc_cosine(array $a, array $b): float
 {
     $n = min(count($a), count($b));
@@ -46,14 +78,26 @@ function kofc_cosine(array $a, array $b): float
 }
 
 /**
- * Prompt-ready retrieval block, balanced across collections and ordered by authority.
+ * Prompt-ready retrieval block: weighted, floored, budgeted, authority-ordered.
  * Returns '' safely when mocked, empty, or on any error.
- * $mix maps collection => how many passages to include.
+ *
+ * @param string     $query   the search text
+ * @param int        $k       total passage budget; 0 = use config 'k'
+ * @param array|null $tuning  optional override of weights|floor|mix|min|k (e.g. supervisor config)
  */
-function kofc_kb_context(string $query, int $k = 4, ?array $mix = null): string
+function kofc_kb_context(string $query, int $k = 0, ?array $tuning = null): string
 {
     if (AI_MOCK) return '';
-    $mix = $mix ?? json_decode(KOFC_DEFAULT_MIX, true);
+    $meta   = require __DIR__ . '/collections.php';
+    $tuning = is_array($tuning) ? $tuning : [];
+    $stored = kofc_kb_tuning();   // supervisor-saved overrides (empty until the table exists / is set)
+
+    // Precedence: explicit $tuning arg  >  supervisor-saved row  >  collections.php defaults.
+    $weights = $tuning['weights'] ?? $stored['weights'] ?? ($meta['weights'] ?? []);
+    $floor   = (float)($tuning['floor'] ?? $stored['floor'] ?? ($meta['floor'] ?? 0.0));
+    $caps    = $tuning['mix']     ?? $stored['mix']  ?? ($meta['mix']  ?? json_decode(KOFC_DEFAULT_MIX, true));
+    $mins    = $tuning['min']     ?? $stored['min']  ?? ($meta['min']  ?? []);
+    $budget  = $k > 0 ? $k : (int)($tuning['k'] ?? $stored['k'] ?? ($meta['k'] ?? 6));
 
     try {
         $qv = kofc_embed($query);
@@ -65,35 +109,72 @@ function kofc_kb_context(string $query, int $k = 4, ?array $mix = null): string
     }
     if (!$rows) return '';
 
-    $byCol = [];
+    // 1) Score every chunk, drop sub-floor noise, apply the collection weight.
+    $pool = [];
     foreach ($rows as $r) {
         $emb = json_decode($r['embedding'], true);
         if (!is_array($emb)) continue;
-        $col = $r['collection'] !== '' ? $r['collection'] : 'policy';
-        $byCol[$col][] = [
+        $col = (isset($r['collection']) && $r['collection'] !== '') ? $r['collection'] : 'policy';
+        if (($caps[$col] ?? 0) <= 0) continue;             // collection not part of this query's mix
+        $raw = kofc_cosine($qv, $emb);
+        if ($raw < $floor) continue;                        // relevance floor
+        $w   = isset($weights[$col]) ? (float)$weights[$col] : 1.0;
+        $pool[] = [
             'source'     => $r['source'],
+            'collection' => $col,
             'chunk_text' => $r['chunk_text'],
-            'score'      => kofc_cosine($qv, $emb),
+            'raw'        => $raw,
+            'eff'        => $raw * $w,
         ];
     }
+    if (!$pool) return '';
+    usort($pool, fn($a, $b) => $b['eff'] <=> $a['eff']);
 
-    $meta  = require __DIR__ . '/collections.php';
-    $out   = $meta['preamble'] . "\n\n";
-    $any   = false;
+    // 2) Select: guarantee per-collection minimums first (e.g. binding regs), then fill the rest
+    //    by weighted score — all bounded by per-collection caps and the total budget.
+    $chosen = [];
+    $used   = [];
+    $taken  = [];
+    $take = function (int $i, array $h) use (&$chosen, &$used, &$taken, $caps, $budget): bool {
+        if (count($chosen) >= $budget) return false;
+        $c = $h['collection'];
+        if (($used[$c] ?? 0) >= ($caps[$c] ?? 0)) return false;
+        $used[$c]   = ($used[$c] ?? 0) + 1;
+        $taken[$i]  = true;
+        $chosen[]   = $h;
+        return true;
+    };
 
+    foreach ($mins as $col => $need) {
+        $got = 0;
+        foreach ($pool as $i => $h) {
+            if ($got >= (int)$need || count($chosen) >= $budget) break;
+            if ($h['collection'] !== $col || isset($taken[$i])) continue;
+            if ($take($i, $h)) $got++;
+        }
+    }
+    foreach ($pool as $i => $h) {
+        if (count($chosen) >= $budget) break;
+        if (isset($taken[$i])) continue;
+        $take($i, $h);
+    }
+    if (!$chosen) return '';
+
+    // 3) Present grouped by AUTHORITY ORDER, labeled, with the preamble.
+    $bySel = [];
+    foreach ($chosen as $h) $bySel[$h['collection']][] = $h;
+
+    $out = $meta['preamble'] . "\n\n";
+    $any = false;
     foreach ($meta['authority_order'] as $col) {
-        $want = $mix[$col] ?? 0;
-        if ($want <= 0 || empty($byCol[$col])) continue;
-        usort($byCol[$col], fn($a, $b) => $b['score'] <=> $a['score']);
-        $top = array_slice($byCol[$col], 0, $want);
-        if (!$top) continue;
+        if (empty($bySel[$col])) continue;
+        usort($bySel[$col], fn($a, $b) => $b['eff'] <=> $a['eff']);
         $any = true;
         $out .= '[' . strtoupper($meta['labels'][$col]) . "]\n";
-        foreach ($top as $h) {
+        foreach ($bySel[$col] as $h) {
             $out .= '[' . $h['source'] . '] ' . trim($h['chunk_text']) . "\n\n";
         }
     }
-
     return $any ? rtrim($out) : '';
 }
 
