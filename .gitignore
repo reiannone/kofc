@@ -2,7 +2,7 @@
 web/node_modules/
 
 # build output (optional — drop this line if your deploy serves web/dist directly)
-web/dist/
+# web/dist/ is committed — the production server has no Node to build with
 
 # secrets
 api/config.local.php
