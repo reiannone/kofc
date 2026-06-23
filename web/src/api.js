@@ -2,6 +2,19 @@
 // and proxied to XAMPP in local dev via vite.config.js.
 const BASE = '/api';
 
+async function handle(res) {
+  if (!res.ok) {
+    const msg = await res.text().catch(() => res.statusText);
+    throw new Error(`${res.status}: ${msg}`);
+  }
+  return res.json();
+}
+
+export async function apiGet(path) {
+  const res = await fetch(`${BASE}/${path}`, { credentials: 'include' });
+  return handle(res);
+}
+
 export async function apiPost(path, body) {
   const res = await fetch(`${BASE}/${path}`, {
     method: 'POST',
@@ -9,11 +22,17 @@ export async function apiPost(path, body) {
     credentials: 'include',
     body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    const msg = await res.text().catch(() => res.statusText);
-    throw new Error(`${res.status}: ${msg}`);
-  }
-  return res.json();
+  return handle(res);
+}
+
+// Multipart upload (FormData) — used for knowledge-base file ingest.
+export async function apiUpload(path, formData) {
+  const res = await fetch(`${BASE}/${path}`, {
+    method: 'POST',
+    credentials: 'include',
+    body: formData,
+  });
+  return handle(res);
 }
 
 export async function login(username, password) {

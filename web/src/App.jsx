@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import {
   Shield, Send, CheckCircle2, XCircle, AlertTriangle, Loader2, ClipboardCheck,
   Mic, Square, Volume2, VolumeX, MessageSquare, Sparkles, Plus, ThumbsUp, ThumbsDown, LogOut, Settings,
@@ -246,10 +247,12 @@ export default function App({ user, onLogout }) {
         {user && (
           <span style={{ fontSize: 12, opacity: 0.85, marginLeft: 8 }}>{user.username}</span>
         )}
-        <a href="/admin/index.html" title="Admin console"
-          style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', opacity: 0.9, display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, textDecoration: 'none', marginLeft: 8 }}>
-          <Settings size={16} /> Admin
-        </a>
+        {user?.is_admin && (
+          <Link to="/admin" title="Admin console"
+            style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', opacity: 0.9, display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, textDecoration: 'none', marginLeft: 8 }}>
+            <Settings size={16} /> Admin
+          </Link>
+        )}
         {onLogout && (
           <button onClick={onLogout} title="Sign out"
             style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', opacity: 0.9, display: 'flex' }}>
