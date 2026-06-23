@@ -82,34 +82,44 @@ try {
 function kofc_blank_profile(): array
 {
     return [
-        'age' => null, 'marital_status' => '', 'has_dependents' => '',
-        'annual_income' => null, 'currently_employed' => null,
-        'primary_goal' => '', 'existing_coverage' => '', 'budget_monthly' => null,
+        'member_name' => '', 'member_dob' => '', 'council_number' => '', 'member_occupation' => '',
+        'age' => null, 'annual_income' => null, 'currently_employed' => null,
+        'marital_status' => '', 'spouse_name' => '', 'spouse_dob' => '', 'anniversary_date' => '',
+        'spouse_occupation' => '', 'spouse_income' => null,
+        'has_dependents' => '', 'children' => '',
+        'has_will' => '', 'will_last_updated' => '', 'has_trust' => '', 'special_needs_trust' => '',
+        'wealth_transfer_plan' => '', 'estate_tax_plan' => '', 'ltc_plan' => '', 'ltc_plan_details' => '',
+        'need_debts' => null, 'need_mortgage' => null, 'need_education' => null,
+        'need_final_expenses' => null, 'need_income_replace' => null,
+        'retire_target_number' => null, 'retire_age' => null, 'retire_income_goal' => '',
+        'combined_liquid_savings' => null, 'combined_nonqualified' => null, 'expecting_inheritance' => '',
+        'primary_goal' => '', 'budget_monthly' => null, 'existing_coverage' => '', 'coverage_feeling' => '',
     ];
 }
 
 function kofc_run_extract(string $transcript): array
 {
+    $shape = json_encode(kofc_blank_profile());
     $system =
-        "You extract a structured insurance member profile from a conversation between a Knights of\n"
+        "You extract a structured insurance fact-find from a conversation between a Knights of\n"
       . "Columbus field AGENT and an AI ASSISTANT about the agent's client. Use ONLY facts the agent\n"
-      . "stated or that are clearly implied. NEVER guess or infer beyond what's said. If a field is\n"
-      . "unknown, return null (numbers) or \"\" (text/enums) — do not fill it.\n\n"
-      . "Respond with ONLY a JSON object, no markdown, no preamble, in exactly this shape:\n"
-      . '{"age":null,"marital_status":"","has_dependents":"","annual_income":null,'
-      . '"currently_employed":null,"primary_goal":"","existing_coverage":"","budget_monthly":null,'
-      . '"missing":[]}' . "\n\n"
+      . "stated or clearly implied. NEVER guess. Unknown numeric fields = null; unknown text/enum = \"\".\n\n"
+      . "Respond with ONLY a JSON object — no markdown, no preamble — with exactly these keys:\n"
+      . $shape . "\n(plus a \"missing\" array of the field names still unknown).\n\n"
       . "Field rules:\n"
-      . "- age: integer years, or null.\n"
-      . "- marital_status: exactly one of \"single\", \"married\", \"widowed\", or \"\".\n"
-      . "- has_dependents: \"yes\", \"no\", or \"\".\n"
-      . "- annual_income: integer US dollars per year, or null.\n"
+      . "- age, retire_age: integer years, or null.\n"
+      . "- member_dob, spouse_dob, anniversary_date, will_last_updated: short date strings as stated, or \"\".\n"
+      . "- marital_status: one of \"single\",\"married\",\"widowed\",\"divorced\", or \"\".\n"
+      . "- annual_income, spouse_income, budget_monthly, need_debts, need_mortgage, need_education,\n"
+      . "  need_final_expenses, need_income_replace, retire_target_number, combined_liquid_savings,\n"
+      . "  combined_nonqualified: integer US dollars, or null.\n"
       . "- currently_employed: true, false, or null.\n"
-      . "- primary_goal: exactly one of \"income_replacement\", \"mortgage_protection\",\n"
-      . "  \"retirement_income\", \"long_term_care\", \"estate_legacy\", or \"\". Pick the single best fit.\n"
-      . "- existing_coverage: a short phrase describing coverage the client already has, or \"\".\n"
-      . "- budget_monthly: integer US dollars per month the client can spend, or null.\n"
-      . "- missing: array of the field names above that remain unknown after reading.\n";
+      . "- has_dependents, has_will, has_trust, special_needs_trust, wealth_transfer_plan,\n"
+      . "  estate_tax_plan, ltc_plan, expecting_inheritance: \"yes\", \"no\", or \"\".\n"
+      . "- primary_goal: one of \"income_replacement\",\"mortgage_protection\",\"retirement_income\",\n"
+      . "  \"long_term_care\",\"estate_legacy\", or \"\". Pick the single best fit.\n"
+      . "- member_name, member_occupation, spouse_name, spouse_occupation, council_number, children,\n"
+      . "  ltc_plan_details, retire_income_goal, existing_coverage, coverage_feeling: short text, or \"\".\n";
 
     $user = "CONVERSATION:\n" . $transcript;
 
@@ -127,19 +137,18 @@ function kofc_mock_extract(string $transcript): array
     $t = strtolower($transcript);
     $p = kofc_blank_profile();
 
-    if (preg_match('/\b(\d{2})\s*[- ]?\s*year[- ]?old\b/', $t, $m)) {
-        $p['age'] = (int)$m[1];
-    } elseif (preg_match('/\bage\s*(?:is\s*)?(\d{2})\b/', $t, $m)) {
-        $p['age'] = (int)$m[1];
-    }
+    if (preg_match('/\b(\d{2})\s*[- ]?\s*year[- ]?old\b/', $t, $m))      $p['age'] = (int)$m[1];
+    elseif (preg_match('/\bage\s*(?:is\s*)?(\d{2})\b/', $t, $m))         $p['age'] = (int)$m[1];
 
     if (strpos($t, 'married') !== false)       $p['marital_status'] = 'married';
     elseif (strpos($t, 'widow') !== false)     $p['marital_status'] = 'widowed';
+    elseif (strpos($t, 'divorc') !== false)    $p['marital_status'] = 'divorced';
     elseif (strpos($t, 'single') !== false)    $p['marital_status'] = 'single';
 
-    if (preg_match('/\b(kids|children|dependents?|son|daughter)\b/', $t)) {
-        $p['has_dependents'] = 'yes';
-    }
+    if (preg_match('/\b(kids|children|dependents?|son|daughter)\b/', $t)) $p['has_dependents'] = 'yes';
+
+    if (preg_match('/\$?\s*(\d{2,3})\s*k\b/', $t, $m))                    $p['annual_income'] = (int)$m[1] * 1000;
+    elseif (preg_match('/\$\s*(\d{2,3}(?:,\d{3})+)/', $t, $m))           $p['annual_income'] = (int)str_replace(',', '', $m[1]);
 
     if (strpos($t, 'retire') !== false)                                          $p['primary_goal'] = 'retirement_income';
     elseif (strpos($t, 'mortgage') !== false)                                    $p['primary_goal'] = 'mortgage_protection';
@@ -155,56 +164,50 @@ function kofc_mock_extract(string $transcript): array
 }
 
 /**
- * Force the model output into the exact Recommend shape and valid enum values,
+ * Force the model output into the exact fact-find shape and valid enum values,
  * then recompute `missing` from the sanitized result (don't trust the model's list).
  */
 function kofc_sanitize_profile(array $in): array
 {
-    $marital = ['single', 'married', 'widowed'];
+    $marital = ['single', 'married', 'widowed', 'divorced'];
     $goals   = ['income_replacement', 'mortgage_protection', 'retirement_income', 'long_term_care', 'estate_legacy'];
+    $yn      = ['yes', 'no'];
+    $ynKeys  = ['has_dependents', 'has_will', 'has_trust', 'special_needs_trust',
+                'wealth_transfer_plan', 'estate_tax_plan', 'ltc_plan', 'expecting_inheritance'];
+    $intKeys = ['annual_income', 'spouse_income', 'budget_monthly',
+                'need_debts', 'need_mortgage', 'need_education', 'need_final_expenses', 'need_income_replace',
+                'retire_target_number', 'combined_liquid_savings', 'combined_nonqualified'];
+    $txtKeys = ['member_name', 'member_dob', 'council_number', 'member_occupation',
+                'spouse_name', 'spouse_dob', 'anniversary_date', 'spouse_occupation', 'children',
+                'will_last_updated', 'ltc_plan_details', 'retire_income_goal', 'existing_coverage', 'coverage_feeling'];
 
-    $age = (isset($in['age']) && is_numeric($in['age'])) ? (int)$in['age'] : null;
-    if ($age !== null && ($age < 0 || $age > 120)) $age = null;
+    $out = kofc_blank_profile();
 
-    $income = (isset($in['annual_income']) && is_numeric($in['annual_income'])) ? (int)$in['annual_income'] : null;
-    if ($income !== null && $income < 0) $income = null;
-
-    $budget = (isset($in['budget_monthly']) && is_numeric($in['budget_monthly'])) ? (int)$in['budget_monthly'] : null;
-    if ($budget !== null && $budget < 0) $budget = null;
-
-    $ms = (isset($in['marital_status']) && in_array($in['marital_status'], $marital, true)) ? $in['marital_status'] : '';
-
-    $hd = $in['has_dependents'] ?? '';
-    if (is_bool($hd)) $hd = $hd ? 'yes' : 'no';
-    $hd = in_array($hd, ['yes', 'no'], true) ? $hd : '';
+    foreach (['age', 'retire_age'] as $k) {
+        if (isset($in[$k]) && is_numeric($in[$k])) { $v = (int)$in[$k]; if ($v >= 0 && $v <= 120) $out[$k] = $v; }
+    }
+    foreach ($intKeys as $k) {
+        if (isset($in[$k]) && is_numeric($in[$k])) { $v = (int)$in[$k]; if ($v >= 0) $out[$k] = $v; }
+    }
+    foreach ($ynKeys as $k) {
+        $v = $in[$k] ?? '';
+        if (is_bool($v)) $v = $v ? 'yes' : 'no';
+        $out[$k] = in_array($v, $yn, true) ? $v : '';
+    }
+    $out['marital_status'] = (isset($in['marital_status']) && in_array($in['marital_status'], $marital, true)) ? $in['marital_status'] : '';
+    $out['primary_goal']   = (isset($in['primary_goal']) && in_array($in['primary_goal'], $goals, true)) ? $in['primary_goal'] : '';
 
     $emp = $in['currently_employed'] ?? null;
-    if (!is_bool($emp)) {
-        if ($emp === 'yes')      $emp = true;
-        elseif ($emp === 'no')   $emp = false;
-        else                     $emp = null;
+    if (!is_bool($emp)) { $emp = ($emp === 'yes') ? true : (($emp === 'no') ? false : null); }
+    $out['currently_employed'] = $emp;
+
+    foreach ($txtKeys as $k) {
+        $v = isset($in[$k]) ? trim((string)$in[$k]) : '';
+        if (mb_strlen($v) > 300) $v = mb_substr($v, 0, 300);
+        $out[$k] = $v;
     }
-
-    $goal = (isset($in['primary_goal']) && in_array($in['primary_goal'], $goals, true)) ? $in['primary_goal'] : '';
-
-    $cov = isset($in['existing_coverage']) ? trim((string)$in['existing_coverage']) : '';
-    if (mb_strlen($cov) > 300) $cov = mb_substr($cov, 0, 300);
-
-    $profile = [
-        'age'                => $age,
-        'marital_status'     => $ms,
-        'has_dependents'     => $hd,
-        'annual_income'      => $income,
-        'currently_employed' => $emp,
-        'primary_goal'       => $goal,
-        'existing_coverage'  => $cov,
-        'budget_monthly'     => $budget,
-    ];
 
     $missing = [];
-    foreach ($profile as $k => $v) {
-        if ($v === null || $v === '') $missing[] = $k;
-    }
-
-    return [$profile, $missing];
+    foreach ($out as $k => $v) { if ($v === null || $v === '') $missing[] = $k; }
+    return [$out, $missing];
 }

@@ -27,6 +27,11 @@ try {
         exit;
     }
 
+    // Derive age from DOB when age wasn't supplied (keeps the 18+ gate working either way).
+    if ((!isset($profile['age']) || $profile['age'] === '' || $profile['age'] === null) && !empty($profile['member_dob'])) {
+        $profile['age'] = kofc_age_from_dob((string)$profile['member_dob']);
+    }
+
     if (!isset($profile['age']) || (int)$profile['age'] < 18) {
         http_response_code(422);
         echo json_encode(['error' => 'age is required and must be 18+']);
@@ -141,4 +146,16 @@ function kofc_extract_json(string $text): array
     $json = substr($text, $start, $end - $start + 1);
     $decoded = json_decode($json, true);
     return is_array($decoded) ? $decoded : ['recommendations' => []];
+}
+
+/** Whole-year age from a date-of-birth string, or null if unparseable / out of range. */
+function kofc_age_from_dob(string $dob): ?int
+{
+    try {
+        $d   = new DateTime($dob);
+        $age = (new DateTime('today'))->diff($d)->y;
+        return ($age >= 0 && $age <= 120) ? $age : null;
+    } catch (Throwable $e) {
+        return null;
+    }
 }

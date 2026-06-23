@@ -48,45 +48,100 @@ const C = {
   ok: '#1e7e34', no: '#b02a37', userBubble: '#2f5597', botBubble: '#ffffff',
 };
 
+// Profile keys grouped by storage type — drive clean/hydrate/merge generically.
+const NUM_KEYS = [
+  'age', 'annual_income', 'spouse_income', 'budget_monthly',
+  'need_debts', 'need_mortgage', 'need_education', 'need_final_expenses', 'need_income_replace',
+  'retire_target_number', 'retire_age', 'combined_liquid_savings', 'combined_nonqualified',
+];
+const STR_KEYS = [
+  'member_name', 'member_dob', 'council_number', 'member_occupation',
+  'marital_status', 'spouse_name', 'spouse_dob', 'anniversary_date', 'spouse_occupation',
+  'has_dependents', 'children',
+  'has_will', 'will_last_updated', 'has_trust', 'special_needs_trust',
+  'wealth_transfer_plan', 'estate_tax_plan', 'ltc_plan', 'ltc_plan_details',
+  'retire_income_goal', 'expecting_inheritance',
+  'primary_goal', 'existing_coverage', 'coverage_feeling',
+];
+
 const EMPTY = {
-  age: '', marital_status: '', has_dependents: '', annual_income: '',
-  currently_employed: true, primary_goal: '', existing_coverage: '', budget_monthly: '',
+  // Member / household
+  member_name: '', member_dob: '', council_number: '', member_occupation: '',
+  age: '', annual_income: '', currently_employed: true,
+  // Spouse
+  marital_status: '', spouse_name: '', spouse_dob: '', anniversary_date: '',
+  spouse_occupation: '', spouse_income: '',
+  // Family
+  has_dependents: '', children: '',
+  // Estate planning
+  has_will: '', will_last_updated: '', has_trust: '', special_needs_trust: '',
+  wealth_transfer_plan: '', estate_tax_plan: '', ltc_plan: '', ltc_plan_details: '',
+  // Insurance needs
+  need_debts: '', need_mortgage: '', need_education: '', need_final_expenses: '', need_income_replace: '',
+  // Retirement
+  retire_target_number: '', retire_age: '', retire_income_goal: '',
+  // Assets
+  combined_liquid_savings: '', combined_nonqualified: '', expecting_inheritance: '',
+  // Goals / coverage
+  primary_goal: '', budget_monthly: '', existing_coverage: '', coverage_feeling: '',
 };
 
 // Human labels for the profile keys (used in the "filled from conversation" note).
 const LABELS = {
-  age: 'Age', marital_status: 'Marital status', has_dependents: 'Dependents',
-  annual_income: 'Annual income', currently_employed: 'Employment',
-  primary_goal: 'Primary goal', existing_coverage: 'Existing coverage', budget_monthly: 'Monthly budget',
+  member_name: 'Member name', member_dob: 'Date of birth', council_number: 'Council number',
+  member_occupation: 'Member occupation', age: 'Age', annual_income: 'Member income',
+  currently_employed: 'Employment',
+  marital_status: 'Marital status', spouse_name: 'Spouse name', spouse_dob: 'Spouse DOB',
+  anniversary_date: 'Anniversary date', spouse_occupation: 'Spouse occupation', spouse_income: 'Spouse income',
+  has_dependents: 'Dependents', children: 'Children',
+  has_will: 'Will', will_last_updated: 'Will last updated', has_trust: 'Trust',
+  special_needs_trust: 'Special needs trust', wealth_transfer_plan: 'Wealth-transfer plan',
+  estate_tax_plan: 'Estate-tax plan', ltc_plan: 'Long-term care plan', ltc_plan_details: 'LTC plan details',
+  need_debts: 'Debts', need_mortgage: 'Mortgage', need_education: 'Education fund',
+  need_final_expenses: 'Final expenses', need_income_replace: 'Income to replace',
+  retire_target_number: 'Number to never work again', retire_age: 'Planned retirement age',
+  retire_income_goal: 'Retirement income goal',
+  combined_liquid_savings: 'Liquid savings / MM / CDs', combined_nonqualified: 'Non-qualified balances',
+  expecting_inheritance: 'Expecting inheritance',
+  primary_goal: 'Primary goal', budget_monthly: 'Monthly budget',
+  existing_coverage: 'Existing coverage', coverage_feeling: 'Feeling about coverage',
 };
 
-// Build the compact "known facts" object sent to chat.php — only fields the rep has
-// meaningfully set, normalized. Returns null when nothing is worth sending.
+function ageFromDob(dob) {
+  if (!dob) return '';
+  const d = new Date(dob);
+  if (Number.isNaN(d.getTime())) return '';
+  const t = new Date();
+  let a = t.getFullYear() - d.getFullYear();
+  const m = t.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && t.getDate() < d.getDate())) a--;
+  return (a >= 0 && a < 130) ? a : '';
+}
+
+// Build the compact "known facts" object sent to chat.php / saved on a deal. Numbers coerced,
+// age derived from DOB when not set directly. Returns null when nothing is worth sending.
 function cleanProfile(p) {
+  const pp = { ...p };
+  if ((pp.age === '' || pp.age == null) && pp.member_dob) {
+    const a = ageFromDob(pp.member_dob); if (a !== '') pp.age = a;
+  }
   const out = {};
-  if (p.age !== '' && p.age != null) out.age = Number(p.age) || null;
-  if (p.marital_status) out.marital_status = p.marital_status;
-  if (p.has_dependents) out.has_dependents = p.has_dependents;            // 'yes' | 'no'
-  if (p.annual_income !== '' && p.annual_income != null) out.annual_income = Number(p.annual_income) || null;
-  if (typeof p.currently_employed === 'boolean') out.currently_employed = p.currently_employed;
-  if (p.primary_goal) out.primary_goal = p.primary_goal;
-  if (p.existing_coverage) out.existing_coverage = p.existing_coverage;
-  if (p.budget_monthly !== '' && p.budget_monthly != null) out.budget_monthly = Number(p.budget_monthly) || null;
-  Object.keys(out).forEach((k) => { if (out[k] == null) delete out[k]; });
+  for (const k of NUM_KEYS) {
+    if (pp[k] !== '' && pp[k] != null) { const n = Number(pp[k]); if (!Number.isNaN(n)) out[k] = n; }
+  }
+  for (const k of STR_KEYS) {
+    if (pp[k] !== '' && pp[k] != null) out[k] = pp[k];
+  }
+  if (typeof pp.currently_employed === 'boolean') out.currently_employed = pp.currently_employed;
   return Object.keys(out).length ? out : null;
 }
 
-// Inverse of cleanProfile: turn a stored deal profile back into form-shaped values (strings for inputs).
+// Inverse of cleanProfile: stored deal profile -> form-shaped values (strings for inputs).
 function hydrateProfile(p) {
   const out = {};
-  if (p.age != null && p.age !== '') out.age = String(p.age);
-  if (p.marital_status) out.marital_status = p.marital_status;
-  if (p.has_dependents) out.has_dependents = p.has_dependents;
-  if (p.annual_income != null && p.annual_income !== '') out.annual_income = String(p.annual_income);
+  for (const k of NUM_KEYS) if (p[k] != null && p[k] !== '') out[k] = String(p[k]);
+  for (const k of STR_KEYS) if (p[k] != null && p[k] !== '') out[k] = p[k];
   if (typeof p.currently_employed === 'boolean') out.currently_employed = p.currently_employed;
-  if (p.primary_goal) out.primary_goal = p.primary_goal;
-  if (p.existing_coverage) out.existing_coverage = p.existing_coverage;
-  if (p.budget_monthly != null && p.budget_monthly !== '') out.budget_monthly = String(p.budget_monthly);
   return out;
 }
 
@@ -262,19 +317,19 @@ export default function App({ user, onLogout }) {
     const next = { ...profile };
     const filled = [];
     const isDefault = (k) => profile[k] === EMPTY[k];
-    const take = (k, val, toForm) => {
-      if (val == null || val === '') return;
-      if (!isDefault(k)) return;           // keep the rep's value
-      next[k] = toForm ? toForm(val) : val;
+    Object.keys(EMPTY).forEach((k) => {
+      if (k === 'currently_employed') return;
+      const v = ext[k];
+      if (v == null || v === '') return;
+      if (!isDefault(k)) return;                 // keep the rep's value
+      next[k] = NUM_KEYS.includes(k) ? String(v) : v;
       filled.push(k);
-    };
-    take('age', ext.age, String);
-    take('marital_status', ext.marital_status);
-    take('has_dependents', ext.has_dependents);
-    take('annual_income', ext.annual_income, String);
-    take('primary_goal', ext.primary_goal);
-    take('existing_coverage', ext.existing_coverage);
-    take('budget_monthly', ext.budget_monthly, String);
+    });
+    // If the extractor gave a DOB, derive age too (when age is still untouched).
+    if (ext.member_dob && isDefault('age')) {
+      const a = ageFromDob(ext.member_dob);
+      if (a !== '' && !filled.includes('age')) { next.age = String(a); filled.push('age'); }
+    }
     // currently_employed defaults to true; only overwrite the untouched default with an explicit false.
     if (typeof ext.currently_employed === 'boolean'
         && profile.currently_employed === EMPTY.currently_employed
@@ -320,10 +375,12 @@ export default function App({ user, onLogout }) {
   async function getRecommendation() {
     setError(null); setSaved(false); setLoading(true); setResult(null);
     try {
+      const ageVal = (profile.age !== '' && profile.age != null ? Number(profile.age) : ageFromDob(profile.member_dob)) || null;
       const payload = {
         ...profile,
-        age: Number(profile.age) || null,
+        age: ageVal,
         annual_income: Number(profile.annual_income) || null,
+        spouse_income: Number(profile.spouse_income) || null,
         has_dependents: profile.has_dependents === 'yes',
       };
       const data = await apiPost('recommend.php', payload);
@@ -504,6 +561,41 @@ export default function App({ user, onLogout }) {
       </div>
     );
   }
+
+  // ---- Recommend form field helpers (close over profile/set/filledKeys) ----
+  const ff = (k) => filledKeys.has(k);
+  const fTxt = (k, label, props = {}) => (
+    <Field label={label} filled={ff(k)}>
+      <input style={inputStyle} value={profile[k]} onChange={(e) => set(k, e.target.value)} {...props} />
+    </Field>
+  );
+  const fNum = (k, label) => fTxt(k, label, { type: 'number' });
+  const fDate = (k, label) => fTxt(k, label, { type: 'date' });
+  const fYN = (k, label) => (
+    <Field label={label} filled={ff(k)}>
+      <select style={inputStyle} value={profile[k]} onChange={(e) => set(k, e.target.value)}>
+        <option value="">Select…</option><option value="yes">Yes</option><option value="no">No</option>
+      </select>
+    </Field>
+  );
+  const fSel = (k, label, opts) => (
+    <Field label={label} filled={ff(k)}>
+      <select style={inputStyle} value={profile[k]} onChange={(e) => set(k, e.target.value)}>
+        <option value="">Select…</option>
+        {opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+      </select>
+    </Field>
+  );
+  const setDob = (e) => {
+    const v = e.target.value;
+    setProfile((p) => ({ ...p, member_dob: v, age: v ? String(ageFromDob(v)) : p.age }));
+    setProfileTouched(true);
+    setFilledKeys((s) => { const n = new Set(s); n.delete('member_dob'); n.delete('age'); return n; });
+  };
+  const grid2 = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 };
+  const subhead = (t) => (
+    <div style={{ fontSize: 11, fontWeight: 700, color: C.navy, textTransform: 'uppercase', letterSpacing: '.04em', margin: '6px 0 10px', borderTop: `1px solid ${C.border}`, paddingTop: 12 }}>{t}</div>
+  );
 
   const tabBtn = (id, label, Icon) => (
     <button onClick={() => setTab(id)}
@@ -689,34 +781,98 @@ export default function App({ user, onLogout }) {
                 {pullNote}
               </div>
             )}
-            <Field label="Age" filled={filledKeys.has('age')}><input style={inputStyle} type="number" value={profile.age} onChange={(e) => set('age', e.target.value)} /></Field>
-            <Field label="Marital status" filled={filledKeys.has('marital_status')}>
-              <select style={inputStyle} value={profile.marital_status} onChange={(e) => set('marital_status', e.target.value)}>
-                <option value="">Select…</option><option value="single">Single</option><option value="married">Married</option><option value="widowed">Widowed</option>
-              </select>
-            </Field>
-            <Field label="Has dependents?" filled={filledKeys.has('has_dependents')}>
-              <select style={inputStyle} value={profile.has_dependents} onChange={(e) => set('has_dependents', e.target.value)}>
-                <option value="">Select…</option><option value="yes">Yes</option><option value="no">No</option>
-              </select>
-            </Field>
-            <Field label="Annual income (USD)" filled={filledKeys.has('annual_income')}><input style={inputStyle} type="number" value={profile.annual_income} onChange={(e) => set('annual_income', e.target.value)} /></Field>
-            <Field label="Currently employed?" filled={filledKeys.has('currently_employed')}>
-              <select style={inputStyle} value={profile.currently_employed ? 'yes' : 'no'} onChange={(e) => set('currently_employed', e.target.value === 'yes')}>
-                <option value="yes">Yes</option><option value="no">No</option>
-              </select>
-            </Field>
-            <Field label="Primary goal" filled={filledKeys.has('primary_goal')}>
-              <select style={inputStyle} value={profile.primary_goal} onChange={(e) => set('primary_goal', e.target.value)}>
-                <option value="">Select…</option>
-                <option value="income_replacement">Income replacement</option>
-                <option value="mortgage_protection">Mortgage protection</option>
-                <option value="retirement_income">Retirement income</option>
-                <option value="long_term_care">Long-term care planning</option>
-                <option value="estate_legacy">Estate / legacy</option>
-              </select>
-            </Field>
-            <Field label="Existing coverage (notes)" filled={filledKeys.has('existing_coverage')}><input style={inputStyle} value={profile.existing_coverage} onChange={(e) => set('existing_coverage', e.target.value)} /></Field>
+            {/* Member / household */}
+            {fTxt('member_name', 'Member name')}
+            <div style={grid2}>
+              <Field label="Date of birth" filled={ff('member_dob')}>
+                <input style={inputStyle} type="date" value={profile.member_dob} onChange={setDob} />
+              </Field>
+              {fNum('age', 'Age')}
+            </div>
+            <div style={grid2}>
+              {fTxt('council_number', 'Council number')}
+              {fTxt('member_occupation', 'Member occupation')}
+            </div>
+            <div style={grid2}>
+              {fNum('annual_income', 'Member income (USD/yr)')}
+              <Field label="Currently employed?" filled={ff('currently_employed')}>
+                <select style={inputStyle} value={profile.currently_employed ? 'yes' : 'no'} onChange={(e) => set('currently_employed', e.target.value === 'yes')}>
+                  <option value="yes">Yes</option><option value="no">No</option>
+                </select>
+              </Field>
+            </div>
+            {fSel('marital_status', 'Marital status', [['single', 'Single'], ['married', 'Married'], ['widowed', 'Widowed'], ['divorced', 'Divorced']])}
+
+            {/* Spouse (married only) */}
+            {profile.marital_status === 'married' && (<>
+              {subhead('Spouse')}
+              <div style={grid2}>
+                {fTxt('spouse_name', 'Spouse name')}
+                {fDate('spouse_dob', 'Spouse DOB')}
+              </div>
+              <div style={grid2}>
+                {fDate('anniversary_date', 'Anniversary date')}
+                {fTxt('spouse_occupation', 'Spouse occupation')}
+              </div>
+              {fNum('spouse_income', 'Spouse income (USD/yr)')}
+            </>)}
+
+            {/* Family */}
+            {subhead('Family')}
+            {fYN('has_dependents', 'Has dependents?')}
+            {fTxt('children', 'Children (names / ages)')}
+
+            {/* Estate planning */}
+            {subhead('Estate planning')}
+            <div style={grid2}>
+              {fYN('has_will', 'Has a will?')}
+              {fTxt('will_last_updated', 'Will last updated')}
+            </div>
+            <div style={grid2}>
+              {fYN('has_trust', 'Has / needs a trust?')}
+              {fYN('special_needs_trust', 'Special needs trust?')}
+            </div>
+            <div style={grid2}>
+              {fYN('wealth_transfer_plan', 'Wealth-transfer plan?')}
+              {fYN('estate_tax_plan', 'Estate-tax plan?')}
+            </div>
+            {fYN('ltc_plan', 'Long-term care plan?')}
+            {fTxt('ltc_plan_details', 'LTC plan details')}
+
+            {/* Insurance needs */}
+            {subhead('Insurance needs — amount to replace')}
+            <div style={grid2}>
+              {fNum('need_debts', 'Debts')}
+              {fNum('need_mortgage', 'Mortgage')}
+            </div>
+            <div style={grid2}>
+              {fNum('need_education', 'Education fund')}
+              {fNum('need_final_expenses', 'Final expenses')}
+            </div>
+            {fNum('need_income_replace', 'Income to replace')}
+
+            {/* Retirement */}
+            {subhead('Retirement')}
+            <div style={grid2}>
+              {fNum('retire_target_number', 'Number to never work again')}
+              {fNum('retire_age', 'Planned retirement age')}
+            </div>
+            {fTxt('retire_income_goal', 'Retirement income goal')}
+
+            {/* Assets */}
+            {subhead('Assets')}
+            <div style={grid2}>
+              {fNum('combined_liquid_savings', 'Liquid savings / MM / CDs')}
+              {fNum('combined_nonqualified', 'Non-qualified balances')}
+            </div>
+            {fYN('expecting_inheritance', 'Expecting an inheritance?')}
+
+            {/* Goals & coverage */}
+            {subhead('Goals & coverage')}
+            {fSel('primary_goal', 'Primary goal', [['income_replacement', 'Income replacement'], ['mortgage_protection', 'Mortgage protection'], ['retirement_income', 'Retirement income'], ['long_term_care', 'Long-term care planning'], ['estate_legacy', 'Estate / legacy']])}
+            {fNum('budget_monthly', 'Monthly budget (USD)')}
+            {fTxt('existing_coverage', 'Existing coverage (notes)')}
+            {fTxt('coverage_feeling', 'How they feel about current coverage')}
             <button onClick={getRecommendation} disabled={loading}
               style={{ width: '100%', marginTop: 4, padding: '10px', background: C.blue, color: '#fff', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
               {loading ? <Loader2 size={16} className="spin" /> : <Send size={16} />}
