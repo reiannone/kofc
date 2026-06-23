@@ -60,15 +60,6 @@ try {
 
     $kb = require __DIR__ . '/products.php';
     $messages = [['role' => 'system', 'content' => kofc_chat_system($kb)]];
-
-    // If the agent has already recorded structured profile facts on the Recommend tab,
-    // hand them to the model so it doesn't re-ask and can build on them.
-    $known = (is_array($body) && isset($body['profile']) && is_array($body['profile']))
-        ? kofc_known_profile_block($body['profile']) : '';
-    if ($known !== '') {
-        $messages[] = ['role' => 'system', 'content' => $known];
-    }
-
     foreach ($history as $row) {
         $messages[] = ['role' => $row['role'], 'content' => $row['content']];
     }
@@ -127,49 +118,4 @@ function kofc_mock_chat(string $message): string
          . "training passages, and lay out a working plan — needs, prioritized products, how to position "
          . "it, questions still to ask, likely objections, and any suitability flags. Set ai_mock to false "
          . "for real, grounded planning.";
-}
-
-/**
- * Format the structured Recommend-tab profile as authoritative known facts for the model.
- * Skips blank/unknown fields. Returns '' when nothing is set.
- */
-function kofc_known_profile_block(array $p): string
-{
-    $humanize = static fn ($s) => ucfirst(str_replace('_', ' ', (string) $s));
-    $lines = [];
-
-    if (isset($p['age']) && $p['age'] !== '' && $p['age'] !== null) {
-        $lines[] = 'Age: ' . (int) $p['age'];
-    }
-    if (!empty($p['marital_status'])) {
-        $lines[] = 'Marital status: ' . $humanize($p['marital_status']);
-    }
-    if (isset($p['has_dependents']) && $p['has_dependents'] !== '' && $p['has_dependents'] !== null) {
-        $hd = $p['has_dependents'];
-        $hd = is_bool($hd) ? ($hd ? 'yes' : 'no') : (string) $hd;
-        $lines[] = 'Has dependents: ' . $hd;
-    }
-    if (isset($p['annual_income']) && $p['annual_income'] !== '' && $p['annual_income'] !== null) {
-        $lines[] = 'Annual income: $' . number_format((float) $p['annual_income']);
-    }
-    if (array_key_exists('currently_employed', $p) && is_bool($p['currently_employed'])) {
-        $lines[] = 'Currently employed: ' . ($p['currently_employed'] ? 'yes' : 'no');
-    }
-    if (!empty($p['primary_goal'])) {
-        $lines[] = 'Primary goal: ' . $humanize($p['primary_goal']);
-    }
-    if (!empty($p['existing_coverage'])) {
-        $lines[] = 'Existing coverage: ' . trim((string) $p['existing_coverage']);
-    }
-    if (isset($p['budget_monthly']) && $p['budget_monthly'] !== '' && $p['budget_monthly'] !== null) {
-        $lines[] = 'Monthly budget: $' . number_format((float) $p['budget_monthly']);
-    }
-
-    if (!$lines) {
-        return '';
-    }
-
-    return "The agent has already recorded these client facts in the structured profile. "
-         . "Treat them as authoritative, do NOT re-ask them, and build on them:\n- "
-         . implode("\n- ", $lines);
 }
