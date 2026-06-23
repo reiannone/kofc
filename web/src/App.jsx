@@ -52,10 +52,36 @@ const EMPTY = {
   currently_employed: true, primary_goal: '', existing_coverage: '', budget_monthly: '',
 };
 
-function Field({ label, children }) {
+// Human labels for the profile keys (used in the "filled from conversation" note).
+const LABELS = {
+  age: 'Age', marital_status: 'Marital status', has_dependents: 'Dependents',
+  annual_income: 'Annual income', currently_employed: 'Employment',
+  primary_goal: 'Primary goal', existing_coverage: 'Existing coverage', budget_monthly: 'Monthly budget',
+};
+
+// Build the compact "known facts" object sent to chat.php — only fields the rep has
+// meaningfully set, normalized. Returns null when nothing is worth sending.
+function cleanProfile(p) {
+  const out = {};
+  if (p.age !== '' && p.age != null) out.age = Number(p.age) || null;
+  if (p.marital_status) out.marital_status = p.marital_status;
+  if (p.has_dependents) out.has_dependents = p.has_dependents;            // 'yes' | 'no'
+  if (p.annual_income !== '' && p.annual_income != null) out.annual_income = Number(p.annual_income) || null;
+  if (typeof p.currently_employed === 'boolean') out.currently_employed = p.currently_employed;
+  if (p.primary_goal) out.primary_goal = p.primary_goal;
+  if (p.existing_coverage) out.existing_coverage = p.existing_coverage;
+  if (p.budget_monthly !== '' && p.budget_monthly != null) out.budget_monthly = Number(p.budget_monthly) || null;
+  Object.keys(out).forEach((k) => { if (out[k] == null) delete out[k]; });
+  return Object.keys(out).length ? out : null;
+}
+
+function Field({ label, children, filled }) {
   return (
     <label style={{ display: 'block', marginBottom: 12 }}>
-      <span style={{ display: 'block', fontSize: 12, color: C.sub, marginBottom: 4 }}>{label}</span>
+      <span style={{ display: 'block', fontSize: 12, color: filled ? C.blue : C.sub, marginBottom: 4 }}>
+        {label}
+        {filled && <span style={{ marginLeft: 6, fontSize: 10, color: C.blue }}>• from conversation</span>}
+      </span>
       {children}
     </label>
   );
@@ -146,7 +172,8 @@ export default function App({ user, onLogout }) {
     setInput('');
     setSending(true);
     try {
-      const data = await apiPost('chat.php', { message: text, conversation_id: convId });
+      const known = profileTouched ? cleanProfile(profile) : null;
+      const data = await apiPost('chat.php', { message: text, conversation_id: convId, profile: known });
       setConvId(data.conversation_id);
       setMessages((m) => [...m, { role: 'assistant', content: data.reply }]);
       if (speakOn) speak(data.reply);
@@ -161,6 +188,7 @@ export default function App({ user, onLogout }) {
     window.speechSynthesis?.cancel();
     setMessages([]); setConvId(null); setInput(''); setError(null);
     setFb({}); setDownIdx(null);
+    setPullNote(''); setFilledKeys(new Set()); autoPulledRef.current = null;
   }
 
   async function sendFeedback(idx, vote, reason, fix) {
@@ -189,7 +217,82 @@ export default function App({ user, onLogout }) {
   const [rating, setRating] = React.useState(0);
   const [notes, setNotes] = React.useState('');
   const [saved, setSaved] = React.useState(false);
-  const set = (k, v) => setProfile((p) => ({ ...p, [k]: v }));
+
+  // Profile <-> conversation sync.
+  const [profileTouched, setProfileTouched] = React.useState(false); // rep edited or accepted a pull
+  const [filledKeys, setFilledKeys] = React.useState(() => new Set()); // keys filled from the conversation
+  const [pulling, setPulling] = React.useState(false);
+  const [pullNote, setPullNote] = React.useState('');
+  const autoPulledRef = React.useRef(null); // conv id we've already auto-pulled for
+
+  const set = (k, v) => {
+    setProfile((p) => ({ ...p, [k]: v }));
+    setProfileTouched(true);
+    setFilledKeys((s) => {                 // rep edited it — drop the "from conversation" tag
+      if (!s.has(k)) return s;
+      const n = new Set(s); n.delete(k); return n;
+    });
+  };
+
+  // Merge extracted values into the form WITHOUT clobbering anything the rep already set.
+  function mergeExtracted(ext) {
+    const next = { ...profile };
+    const filled = [];
+    const isDefault = (k) => profile[k] === EMPTY[k];
+    const take = (k, val, toForm) => {
+      if (val == null || val === '') return;
+      if (!isDefault(k)) return;           // keep the rep's value
+      next[k] = toForm ? toForm(val) : val;
+      filled.push(k);
+    };
+    take('age', ext.age, String);
+    take('marital_status', ext.marital_status);
+    take('has_dependents', ext.has_dependents);
+    take('annual_income', ext.annual_income, String);
+    take('primary_goal', ext.primary_goal);
+    take('existing_coverage', ext.existing_coverage);
+    take('budget_monthly', ext.budget_monthly, String);
+    // currently_employed defaults to true; only overwrite the untouched default with an explicit false.
+    if (typeof ext.currently_employed === 'boolean'
+        && profile.currently_employed === EMPTY.currently_employed
+        && ext.currently_employed !== EMPTY.currently_employed) {
+      next.currently_employed = ext.currently_employed;
+      filled.push('currently_employed');
+    }
+    return { next, filled };
+  }
+
+  async function pullFromConversation(auto = false) {
+    if (!convId || pulling) return;
+    setPulling(true);
+    if (!auto) setError(null);
+    try {
+      const data = await apiPost('extract-profile.php', { conversation_id: convId });
+      const { next, filled } = mergeExtracted(data.profile || {});
+      if (filled.length) {
+        setProfile(next);
+        setFilledKeys((s) => new Set([...s, ...filled]));
+        setProfileTouched(true);
+        setPullNote('Filled from conversation: '
+          + filled.map((k) => LABELS[k] || k).join(', ') + '. Review before submitting.');
+      } else {
+        setPullNote('Nothing new to fill from the conversation yet.');
+      }
+    } catch (e) {
+      if (!auto) setError(e.message);
+    } finally {
+      setPulling(false);
+    }
+  }
+
+  // Auto-pull once when entering Recommend with an active conversation and an untouched form.
+  React.useEffect(() => {
+    if (tab === 'recommend' && convId && autoPulledRef.current !== convId && !profileTouched) {
+      autoPulledRef.current = convId;
+      pullFromConversation(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, convId]);
 
   async function getRecommendation() {
     setError(null); setSaved(false); setLoading(true); setResult(null);
@@ -377,25 +480,43 @@ export default function App({ user, onLogout }) {
           {error && <div style={{ background: '#fde8e8', color: C.no, padding: 10, borderRadius: 6, marginBottom: 12, fontSize: 13 }}>{error}</div>}
 
           <section style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: 16, marginBottom: 16 }}>
-            <h3 style={{ margin: '0 0 12px', fontSize: 14, color: C.navy }}>Member profile</h3>
-            <Field label="Age"><input style={inputStyle} type="number" value={profile.age} onChange={(e) => set('age', e.target.value)} /></Field>
-            <Field label="Marital status">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 12px' }}>
+              <h3 style={{ margin: 0, fontSize: 14, color: C.navy, flex: 1 }}>Member profile</h3>
+              {convId && (
+                <button onClick={() => pullFromConversation(false)} disabled={pulling}
+                  title="Fill this form from your AI Agent conversation"
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', fontSize: 12,
+                    border: `1px solid ${C.blue}`, background: '#fff', color: C.blue, borderRadius: 6,
+                    cursor: pulling ? 'default' : 'pointer' }}>
+                  {pulling ? <Loader2 size={13} className="spin" /> : <Sparkles size={13} />}
+                  {pulling ? 'Reading…' : 'Pull from conversation'}
+                </button>
+              )}
+            </div>
+            {pullNote && (
+              <div style={{ background: '#eef3fb', border: `1px solid ${C.border}`, color: C.navy,
+                padding: '8px 10px', borderRadius: 6, marginBottom: 12, fontSize: 12, lineHeight: 1.5 }}>
+                {pullNote}
+              </div>
+            )}
+            <Field label="Age" filled={filledKeys.has('age')}><input style={inputStyle} type="number" value={profile.age} onChange={(e) => set('age', e.target.value)} /></Field>
+            <Field label="Marital status" filled={filledKeys.has('marital_status')}>
               <select style={inputStyle} value={profile.marital_status} onChange={(e) => set('marital_status', e.target.value)}>
                 <option value="">Select…</option><option value="single">Single</option><option value="married">Married</option><option value="widowed">Widowed</option>
               </select>
             </Field>
-            <Field label="Has dependents?">
+            <Field label="Has dependents?" filled={filledKeys.has('has_dependents')}>
               <select style={inputStyle} value={profile.has_dependents} onChange={(e) => set('has_dependents', e.target.value)}>
                 <option value="">Select…</option><option value="yes">Yes</option><option value="no">No</option>
               </select>
             </Field>
-            <Field label="Annual income (USD)"><input style={inputStyle} type="number" value={profile.annual_income} onChange={(e) => set('annual_income', e.target.value)} /></Field>
-            <Field label="Currently employed?">
+            <Field label="Annual income (USD)" filled={filledKeys.has('annual_income')}><input style={inputStyle} type="number" value={profile.annual_income} onChange={(e) => set('annual_income', e.target.value)} /></Field>
+            <Field label="Currently employed?" filled={filledKeys.has('currently_employed')}>
               <select style={inputStyle} value={profile.currently_employed ? 'yes' : 'no'} onChange={(e) => set('currently_employed', e.target.value === 'yes')}>
                 <option value="yes">Yes</option><option value="no">No</option>
               </select>
             </Field>
-            <Field label="Primary goal">
+            <Field label="Primary goal" filled={filledKeys.has('primary_goal')}>
               <select style={inputStyle} value={profile.primary_goal} onChange={(e) => set('primary_goal', e.target.value)}>
                 <option value="">Select…</option>
                 <option value="income_replacement">Income replacement</option>
@@ -405,7 +526,7 @@ export default function App({ user, onLogout }) {
                 <option value="estate_legacy">Estate / legacy</option>
               </select>
             </Field>
-            <Field label="Existing coverage (notes)"><input style={inputStyle} value={profile.existing_coverage} onChange={(e) => set('existing_coverage', e.target.value)} /></Field>
+            <Field label="Existing coverage (notes)" filled={filledKeys.has('existing_coverage')}><input style={inputStyle} value={profile.existing_coverage} onChange={(e) => set('existing_coverage', e.target.value)} /></Field>
             <button onClick={getRecommendation} disabled={loading}
               style={{ width: '100%', marginTop: 4, padding: '10px', background: C.blue, color: '#fff', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
               {loading ? <Loader2 size={16} className="spin" /> : <Send size={16} />}
