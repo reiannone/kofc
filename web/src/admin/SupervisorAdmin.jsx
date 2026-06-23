@@ -160,7 +160,157 @@ function ReviewRow({ it, open, onToggle, onActed }) {
   );
 }
 
+/* ============================ DEALS REVIEW ============================ */
+
+const DEAL_TABS = [
+  { s: 'submitted', label: 'Submitted' },
+  { s: 'approved', label: 'Approved' },
+  { s: 'returned', label: 'Returned' },
+  { s: 'all', label: 'All' },
+];
+const DSTATUS = {
+  draft:     { bg: '#eef2f9', fg: '#5b6473' },
+  submitted: { bg: '#fdf6e3', fg: '#b8860b' },
+  approved:  { bg: '#eaf6ec', fg: '#1e7e34' },
+  returned:  { bg: '#fdeaec', fg: '#b02a37' },
+};
+const dpill = (s) => {
+  const m = DSTATUS[s] || DSTATUS.draft;
+  return { fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: m.bg, color: m.fg, flexShrink: 0 };
+};
+
+function DealReviewDetail({ id, onActed }) {
+  const [data, setData] = React.useState(null);
+  const [err, setErr] = React.useState(null);
+  const [notes, setNotes] = React.useState('');
+  const [msg, setMsg] = React.useState('');
+
+  React.useEffect(() => {
+    let live = true;
+    apiGet(`deal-get.php?id=${id}`)
+      .then((d) => { if (live) { setData(d); setNotes(d.deal?.review_notes || ''); } })
+      .catch((e) => { if (live) setErr(e.message); });
+    return () => { live = false; };
+  }, [id]);
+
+  async function act(action) {
+    setMsg('Working…');
+    try { await apiPost('deal-review.php', { id, action, review_notes: notes }); onActed(); }
+    catch (e) { setMsg(e.message); }
+  }
+
+  if (err) return <div style={{ borderTop: `1px solid ${C.border}`, padding: 14, color: C.no, fontSize: 12 }}>{err}</div>;
+  if (!data) return <div style={{ borderTop: `1px solid ${C.border}`, padding: 14, color: C.sub, fontSize: 12 }}>Loading…</div>;
+
+  const deal = data.deal || {};
+  const p = deal.profile || {};
+  const q = { fontSize: 13, margin: '6px 0' };
+  const profileBits = [
+    p.age != null ? `age ${p.age}` : null,
+    p.marital_status || null,
+    p.has_dependents ? `dependents: ${p.has_dependents}` : null,
+    p.annual_income != null ? `income $${Number(p.annual_income).toLocaleString()}` : null,
+    (typeof p.currently_employed === 'boolean') ? (p.currently_employed ? 'employed' : 'not employed') : null,
+    p.primary_goal ? String(p.primary_goal).replace(/_/g, ' ') : null,
+    p.existing_coverage || null,
+    p.budget_monthly != null ? `budget $${Number(p.budget_monthly).toLocaleString()}/mo` : null,
+  ].filter(Boolean);
+
+  return (
+    <div style={{ borderTop: `1px solid ${C.border}`, padding: 14, background: '#fbfcfe' }}>
+      <div style={{ fontSize: 12, color: C.sub, marginBottom: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <span>agent: {deal.agent_id}</span>
+        {deal.reviewed_by && <span>· reviewed by {deal.reviewed_by}</span>}
+        {deal.reviewed_at && <span>· {(deal.reviewed_at || '').replace('T', ' ')}</span>}
+      </div>
+      {profileBits.length > 0 && <div style={q}><b>Profile:</b> {profileBits.join(' · ')}</div>}
+      {deal.submit_note && <div style={q}><b>Agent note:</b> {deal.submit_note}</div>}
+      <div style={q}><b>Deal sheet:</b></div>
+      {deal.deal_sheet ? <Md text={deal.deal_sheet} /> : <div style={{ color: C.sub, fontSize: 12 }}>No deal sheet generated.</div>}
+
+      {data.messages && data.messages.length > 0 && (
+        <details style={{ marginTop: 8 }}>
+          <summary style={{ fontSize: 12, color: C.blue, cursor: 'pointer' }}>Conversation ({data.messages.length} messages)</summary>
+          <div style={{ marginTop: 6 }}>
+            {data.messages.map((m, i) => (
+              <div key={i} style={{ fontSize: 12, margin: '4px 0' }}>
+                <b style={{ color: m.role === 'assistant' ? C.navy : C.sub }}>{m.role === 'assistant' ? 'AI' : 'Agent'}:</b>{' '}
+                {m.role === 'assistant' ? <Md text={m.content} /> : <span>{m.content}</span>}
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+
+      <label style={{ fontSize: 11, color: C.sub, display: 'block', margin: '12px 0 4px' }}>Review notes (returned to the agent)</label>
+      <textarea value={notes} onChange={(e) => setNotes(e.target.value)}
+        style={{ width: '100%', minHeight: 70, padding: '8px 10px', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 13, fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box' }} />
+      <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+        <button onClick={() => act('approve')} style={{ background: C.ok, color: '#fff', border: 'none', borderRadius: 6, padding: '8px 14px', fontSize: 13, cursor: 'pointer' }}>Approve</button>
+        <button onClick={() => act('return')} style={{ background: 'transparent', color: C.no, border: `1px solid ${C.border}`, borderRadius: 6, padding: '8px 14px', fontSize: 13, cursor: 'pointer' }}>Return to agent</button>
+      </div>
+      {msg && <div style={{ fontSize: 12, marginTop: 8, color: C.sub }}>{msg}</div>}
+    </div>
+  );
+}
+
+function DealReviewRow({ it, open, onToggle, onActed }) {
+  return (
+    <div style={{ border: `1px solid ${open ? C.blue : C.border}`, borderRadius: 8, marginBottom: 8, overflow: 'hidden', background: '#fff' }}>
+      <div onClick={onToggle} role="button" tabIndex={0}
+        onKeyDown={(ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); onToggle(); } }}
+        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', cursor: 'pointer', background: open ? '#eef2f9' : '#fff' }}>
+        <span style={{ color: C.sub, fontSize: 11, width: 10, flexShrink: 0, display: 'inline-block', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .12s' }}>▸</span>
+        <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: it.client_name ? C.text : C.sub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {it.client_name || '(unnamed client)'}
+        </span>
+        <span style={{ fontSize: 11, color: C.sub, flexShrink: 0 }}>{it.agent_id}</span>
+        <span style={dpill(it.status)}>{it.status}</span>
+        <span style={{ fontSize: 11, color: C.sub, flexShrink: 0 }}>{(it.updated_at || '').replace('T', ' ').slice(0, 16)}</span>
+      </div>
+      {open && <DealReviewDetail id={it.id} onActed={onActed} />}
+    </div>
+  );
+}
+
+function DealsReview() {
+  const [status, setStatus] = React.useState('submitted');
+  const [items, setItems] = React.useState(null);
+  const [openId, setOpenId] = React.useState(null);
+  const [err, setErr] = React.useState(null);
+
+  const load = React.useCallback(() => {
+    setItems(null); setErr(null); setOpenId(null);
+    apiGet(`deals-review-list.php?status=${status}`)
+      .then((d) => setItems(d.items || []))
+      .catch((e) => { setItems([]); setErr(e.message); });
+  }, [status]);
+  React.useEffect(() => { load(); }, [load]);
+
+  return (
+    <div style={cardStyle}>
+      <h2 style={h2Style}>Deals for review{items ? ` · ${items.length}` : ''}</h2>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+        {DEAL_TABS.map((t) => (
+          <button key={t.s} onClick={() => setStatus(t.s)}
+            style={{ background: status === t.s ? C.blue : '#eef2f9', color: status === t.s ? '#fff' : C.sub, border: 'none', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer' }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {items === null ? <div style={{ color: C.sub }}>Loading…</div>
+        : items.length === 0 ? <div style={{ color: C.sub }}>Nothing here.</div>
+        : items.map((it) => (
+            <DealReviewRow key={it.id} it={it} open={openId === it.id}
+              onToggle={() => setOpenId((cur) => (cur === it.id ? null : it.id))} onActed={load} />
+          ))}
+      {err && <div style={{ color: C.no, fontSize: 12, marginTop: 8 }}>{err}</div>}
+    </div>
+  );
+}
+
 export default function SupervisorAdmin() {
+  const [pane, setPane] = React.useState('feedback');
   const [metrics, setMetrics] = React.useState(null);
   const [status, setStatus] = React.useState('new');
   const [items, setItems] = React.useState(null);
@@ -193,6 +343,19 @@ export default function SupervisorAdmin() {
 
   return (
     <div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 18, borderBottom: `1px solid ${C.border}`, paddingBottom: 12 }}>
+        {[['feedback', 'Feedback'], ['deals', 'Deals']].map(([k, lab]) => (
+          <button key={k} onClick={() => setPane(k)}
+            style={{ background: pane === k ? C.navy : 'transparent', color: pane === k ? '#fff' : C.sub,
+              border: pane === k ? 'none' : `1px solid ${C.border}`, borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+            {lab}
+          </button>
+        ))}
+      </div>
+
+      {pane === 'deals' && <DealsReview />}
+
+      {pane === 'feedback' && (<>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 22 }}>
         {tiles.map(([l, n]) => (
           <div key={l} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 16 }}>
@@ -240,6 +403,7 @@ export default function SupervisorAdmin() {
             ))}
         {err && <div style={{ color: C.no, fontSize: 12, marginTop: 8 }}>{err}</div>}
       </div>
+      </>)}
     </div>
   );
 }

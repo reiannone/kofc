@@ -3,10 +3,11 @@ import { Link } from 'react-router-dom';
 import {
   Shield, Send, CheckCircle2, XCircle, AlertTriangle, Loader2, ClipboardCheck,
   Mic, Square, Volume2, VolumeX, MessageSquare, Sparkles, Plus, ThumbsUp, ThumbsDown, LogOut, Settings,
+  Save, FileText, FolderOpen, ArrowLeft,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { apiPost } from './api.js';
+import { apiGet, apiPost } from './api.js';
 
 // Strip Markdown syntax so text-to-speech doesn't read "asterisk asterisk".
 function stripMd(s) {
@@ -74,6 +75,27 @@ function cleanProfile(p) {
   Object.keys(out).forEach((k) => { if (out[k] == null) delete out[k]; });
   return Object.keys(out).length ? out : null;
 }
+
+// Inverse of cleanProfile: turn a stored deal profile back into form-shaped values (strings for inputs).
+function hydrateProfile(p) {
+  const out = {};
+  if (p.age != null && p.age !== '') out.age = String(p.age);
+  if (p.marital_status) out.marital_status = p.marital_status;
+  if (p.has_dependents) out.has_dependents = p.has_dependents;
+  if (p.annual_income != null && p.annual_income !== '') out.annual_income = String(p.annual_income);
+  if (typeof p.currently_employed === 'boolean') out.currently_employed = p.currently_employed;
+  if (p.primary_goal) out.primary_goal = p.primary_goal;
+  if (p.existing_coverage) out.existing_coverage = p.existing_coverage;
+  if (p.budget_monthly != null && p.budget_monthly !== '') out.budget_monthly = String(p.budget_monthly);
+  return out;
+}
+
+const DEAL_STATUS = {
+  draft:     { bg: '#eef2f9', fg: '#5b6473' },
+  submitted: { bg: '#fdf6e3', fg: '#b8860b' },
+  approved:  { bg: '#eaf6ec', fg: '#1e7e34' },
+  returned:  { bg: '#fdeaec', fg: '#b02a37' },
+};
 
 function Field({ label, children, filled }) {
   return (
@@ -189,6 +211,7 @@ export default function App({ user, onLogout }) {
     setMessages([]); setConvId(null); setInput(''); setError(null);
     setFb({}); setDownIdx(null);
     setPullNote(''); setFilledKeys(new Set()); autoPulledRef.current = null;
+    setDealId(null); setClientName(''); setDealStatus('draft'); setDealSheet(''); setView('chat'); setDealMsg('');
   }
 
   async function sendFeedback(idx, vote, reason, fix) {
@@ -320,6 +343,168 @@ export default function App({ user, onLogout }) {
   const flagsFor = (idx) => (result?.guardrail_flags || []).filter((f) => f.item_index === idx);
   const globalFlags = (result?.guardrail_flags || []).filter((f) => f.item_index === null);
 
+  // ================= DEALS (workspace on the AI Agent tab) =================
+  const [dealId, setDealId] = React.useState(null);
+  const [clientName, setClientName] = React.useState('');
+  const [dealStatus, setDealStatus] = React.useState('draft');
+  const [deals, setDeals] = React.useState(null);
+  const [view, setView] = React.useState('chat'); // 'chat' | 'deals' | 'sheet'
+  const [dealSheet, setDealSheet] = React.useState('');
+  const [sheetLoading, setSheetLoading] = React.useState(false);
+  const [dealMsg, setDealMsg] = React.useState('');
+  const [dealBusy, setDealBusy] = React.useState(false);
+
+  // Save (create or update) the current conversation + profile as a deal; returns the id.
+  async function ensureDeal() {
+    const data = await apiPost('deal-save.php', {
+      deal_id: dealId,
+      conversation_id: convId,
+      client_name: clientName,
+      profile: cleanProfile(profile) || {},
+      deal_sheet: dealSheet || null,
+    });
+    setDealId(data.deal_id);
+    if (data.status) setDealStatus(data.status);
+    return data.deal_id;
+  }
+  async function saveDeal() {
+    setDealBusy(true); setDealMsg('');
+    try { await ensureDeal(); setDealMsg('Saved.'); }
+    catch (e) { setDealMsg(e.message); }
+    finally { setDealBusy(false); }
+  }
+  async function openDealsList() {
+    setView('deals'); setDeals(null); setDealMsg('');
+    try { const d = await apiGet('deal-list.php'); setDeals(d.items || []); }
+    catch (e) { setDeals([]); setDealMsg(e.message); }
+  }
+  async function openDeal(id) {
+    setDealMsg('');
+    try {
+      const d = await apiGet(`deal-get.php?id=${id}`);
+      const deal = d.deal || {};
+      setDealId(deal.id || id);
+      setClientName(deal.client_name || '');
+      setDealStatus(deal.status || 'draft');
+      setDealSheet(deal.deal_sheet || '');
+      setConvId(deal.conversation_id || null);
+      setMessages((d.messages || []).map((m) => ({ role: m.role, content: m.content })));
+      const p = deal.profile || (deal.profile_json ? JSON.parse(deal.profile_json) : null);
+      if (p) { setProfile({ ...EMPTY, ...hydrateProfile(p) }); setProfileTouched(true); }
+      else { setProfile(EMPTY); setProfileTouched(false); }
+      setFilledKeys(new Set()); setPullNote(''); autoPulledRef.current = null;
+      setView('chat');
+    } catch (e) { setDealMsg(e.message); }
+  }
+  async function submitDeal() {
+    setDealBusy(true); setDealMsg('Submitting…');
+    try {
+      const id = await ensureDeal();
+      await apiPost('deal-submit.php', { id, note: '' });
+      setDealStatus('submitted');
+      setDealMsg('Submitted for supervisor review.');
+    } catch (e) { setDealMsg(e.message); }
+    finally { setDealBusy(false); }
+  }
+  async function generateSheet() {
+    setView('sheet'); setSheetLoading(true); setDealMsg('');
+    try {
+      const data = await apiPost('deal-sheet.php', { deal_id: dealId, conversation_id: convId, profile: cleanProfile(profile) || {} });
+      setDealSheet(data.deal_sheet || '');
+    } catch (e) { setDealMsg(e.message); }
+    finally { setSheetLoading(false); }
+  }
+  async function saveSheet() {
+    setDealBusy(true); setDealMsg('');
+    try { await ensureDeal(); setDealMsg('Deal sheet saved.'); }
+    catch (e) { setDealMsg(e.message); }
+    finally { setDealBusy(false); }
+  }
+
+  const pill = (s) => {
+    const m = DEAL_STATUS[s] || DEAL_STATUS.draft;
+    return { fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: m.bg, color: m.fg, flexShrink: 0 };
+  };
+  const dealBtn = { display: 'flex', alignItems: 'center', gap: 5, padding: '6px 10px', fontSize: 12, border: `1px solid ${C.border}`, background: '#fff', color: C.navy, borderRadius: 6, cursor: 'pointer' };
+
+  function renderDealBar() {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: `1px solid ${C.border}`, background: C.card, flexWrap: 'wrap' }}>
+        <input value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Client name"
+          style={{ ...inputStyle, width: 150, padding: '6px 8px', fontSize: 13 }} />
+        <button onClick={saveDeal} disabled={dealBusy} style={dealBtn} title="Save work in progress">
+          {dealBusy ? <Loader2 size={13} className="spin" /> : <Save size={13} />} Save
+        </button>
+        <button onClick={openDealsList} style={dealBtn} title="My deals in the works">
+          <FolderOpen size={13} /> My deals
+        </button>
+        <button onClick={generateSheet} style={dealBtn} title="Generate an AI deal sheet">
+          <FileText size={13} /> Deal sheet
+        </button>
+        <button onClick={submitDeal} disabled={dealBusy} style={{ ...dealBtn, borderColor: C.blue, color: '#fff', background: C.blue }} title="Submit to supervisor for review">
+          <Send size={13} /> Submit
+        </button>
+        {dealId && <span style={pill(dealStatus)}>{dealStatus}</span>}
+        {dealMsg && <span style={{ fontSize: 11, color: C.sub }}>{dealMsg}</span>}
+      </div>
+    );
+  }
+
+  function renderDealsPanel() {
+    return (
+      <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+          <h3 style={{ margin: 0, fontSize: 14, color: C.navy, flex: 1 }}>Deals in the works</h3>
+          <button onClick={() => setView('chat')} style={dealBtn}><ArrowLeft size={13} /> Back to chat</button>
+        </div>
+        {deals === null ? <div style={{ color: C.sub, fontSize: 13 }}>Loading…</div>
+          : deals.length === 0 ? <div style={{ color: C.sub, fontSize: 13 }}>No saved deals yet. Use Save to start one.</div>
+          : deals.map((d) => (
+              <div key={d.id} onClick={() => openDeal(d.id)} role="button" tabIndex={0}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDeal(d.id); } }}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, border: `1px solid ${C.border}`, borderRadius: 8, padding: '10px 12px', marginBottom: 8, cursor: 'pointer', background: '#fff' }}>
+                <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: d.client_name ? C.text : C.sub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {d.client_name || '(unnamed client)'}
+                </span>
+                {Number(d.has_sheet) ? <FileText size={13} color={C.sub} /> : null}
+                <span style={pill(d.status)}>{d.status}</span>
+                <span style={{ fontSize: 11, color: C.sub, flexShrink: 0 }}>{(d.updated_at || '').replace('T', ' ').slice(0, 16)}</span>
+              </div>
+            ))}
+      </div>
+    );
+  }
+
+  function renderSheetPanel() {
+    return (
+      <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+          <h3 style={{ margin: 0, fontSize: 14, color: C.navy, flex: 1 }}>Deal sheet</h3>
+          <button onClick={generateSheet} disabled={sheetLoading} style={dealBtn}>
+            {sheetLoading ? <Loader2 size={13} className="spin" /> : <Sparkles size={13} />} {dealSheet ? 'Regenerate' : 'Generate'}
+          </button>
+          <button onClick={saveSheet} disabled={dealBusy || !dealSheet} style={dealBtn}><Save size={13} /> Save</button>
+          <button onClick={() => setView('chat')} style={dealBtn}><ArrowLeft size={13} /> Back</button>
+        </div>
+        {sheetLoading ? (
+          <div style={{ color: C.sub, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Loader2 size={14} className="spin" /> Writing the deal sheet…
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <textarea value={dealSheet} onChange={(e) => setDealSheet(e.target.value)}
+              placeholder="Generate a sheet, then edit here…"
+              style={{ ...inputStyle, minHeight: 360, resize: 'vertical', fontFamily: 'ui-monospace, Menlo, Consolas, monospace', fontSize: 12, lineHeight: 1.5 }} />
+            <div style={{ border: `1px solid ${C.border}`, borderRadius: 6, padding: 12, background: '#fff', overflow: 'auto', minHeight: 360 }}>
+              {dealSheet.trim() ? <Md text={dealSheet} /> : <span style={{ color: C.sub, fontSize: 12 }}>Preview appears here.</span>}
+            </div>
+          </div>
+        )}
+        {dealMsg && <div style={{ fontSize: 12, color: C.sub, marginTop: 8 }}>{dealMsg}</div>}
+      </div>
+    );
+  }
+
   const tabBtn = (id, label, Icon) => (
     <button onClick={() => setTab(id)}
       style={{ flex: 1, padding: '10px', border: 'none', cursor: 'pointer',
@@ -372,6 +557,10 @@ export default function App({ user, onLogout }) {
       {/* ===================== ADVISOR ===================== */}
       {tab === 'advisor' && (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, width: '100%', maxWidth: 900, margin: '0 auto' }}>
+          {renderDealBar()}
+          {view === 'deals' && renderDealsPanel()}
+          {view === 'sheet' && renderSheetPanel()}
+          {view === 'chat' && (<>
           <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
             {messages.length === 0 && (
               <div style={{ color: C.sub, fontSize: 13, lineHeight: 1.6, textAlign: 'center', marginTop: 24 }}>
@@ -471,6 +660,7 @@ export default function App({ user, onLogout }) {
               Planning support for the licensed agent. Not a suitability determination.
             </p>
           </div>
+          </>)}
         </div>
       )}
 
