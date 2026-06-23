@@ -23,7 +23,14 @@ function Md({ text }) {
 
 const TOOLS = [['bold', 'B'], ['italic', 'I'], ['code', '</>'], ['h3', 'H'], ['ul', '•'], ['ol', '1.'], ['link', '🔗']];
 
-function ReviewItem({ it, onActed }) {
+// One-line plain-text excerpt for the collapsed row (strip Markdown noise, collapse whitespace).
+function excerpt(s, n = 140) {
+  const t = (s || '').replace(/[#*`_>\[\]]/g, '').replace(/\s+/g, ' ').trim();
+  return t.length > n ? t.slice(0, n - 1) + '…' : t;
+}
+
+// ---- expanded detail: full meta + answer + Markdown editor (only mounts when a row is open) ----
+function ReviewDetail({ it, onActed }) {
   const promoted = it.status === 'promoted';
   const seed = it.final_answer || it.suggested_answer || it.answer_text || '';
   const [draft, setDraft] = React.useState(seed);
@@ -78,7 +85,7 @@ function ReviewItem({ it, onActed }) {
   const q = { fontSize: 13, margin: '6px 0' };
 
   return (
-    <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: 14, marginBottom: 12 }}>
+    <div style={{ borderTop: `1px solid ${C.border}`, padding: 14, background: '#fbfcfe' }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, color: C.sub, marginBottom: 8, flexWrap: 'wrap' }}>
         <span style={{ fontWeight: 700, padding: '2px 8px', borderRadius: 10, fontSize: 11, background: it.vote === 'up' ? '#eaf6ec' : '#fdeaec', color: it.vote === 'up' ? C.ok : C.no }}>
           {it.vote === 'up' ? '▲ up' : '▼ down'}
@@ -98,7 +105,7 @@ function ReviewItem({ it, onActed }) {
       <label style={{ fontSize: 11, color: C.sub, display: 'block', margin: '10px 0 4px' }}>
         {promoted ? 'Vetted answer (edit and re-save)' : 'Approved answer to promote (edit as needed)'}
       </label>
-      <div style={{ border: `1px solid ${C.border}`, borderRadius: 6, overflow: 'hidden' }}>
+      <div style={{ border: `1px solid ${C.border}`, borderRadius: 6, overflow: 'hidden', background: '#fff' }}>
         <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', background: '#eef2f9', borderBottom: `1px solid ${C.border}`, padding: 5 }}>
           {TOOLS.map(([k, lab]) => <button key={k} type="button" onClick={() => applyMd(k)} style={tbtn}>{lab}</button>)}
         </div>
@@ -123,10 +130,41 @@ function ReviewItem({ it, onActed }) {
   );
 }
 
+// ---- collapsed row: click anywhere on the summary to expand ----
+function ReviewRow({ it, open, onToggle, onActed }) {
+  const up = it.vote === 'up';
+  const head = excerpt(it.question_text || it.answer_text);
+  const meta = { fontSize: 11, color: C.sub, flexShrink: 0, whiteSpace: 'nowrap' };
+  return (
+    <div style={{ border: `1px solid ${open ? C.blue : C.border}`, borderRadius: 8, marginBottom: 8, overflow: 'hidden', background: '#fff' }}>
+      <div
+        onClick={onToggle}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); onToggle(); } }}
+        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', cursor: 'pointer', background: open ? '#eef2f9' : '#fff' }}
+      >
+        <span style={{ color: C.sub, fontSize: 11, width: 10, flexShrink: 0, display: 'inline-block', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .12s' }}>▸</span>
+        <span title={up ? 'up-vote' : 'down-vote'} style={{ fontWeight: 700, padding: '2px 7px', borderRadius: 10, fontSize: 11, flexShrink: 0, background: up ? '#eaf6ec' : '#fdeaec', color: up ? C.ok : C.no }}>
+          {up ? '▲' : '▼'}
+        </span>
+        <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: head ? C.text : C.sub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {head || '(no text)'}
+        </span>
+        {it.reason_code && <span style={{ ...tag, flexShrink: 0 }}>{it.reason_code}</span>}
+        <span style={meta}>{it.agent_id}</span>
+        <span style={meta}>{(it.created_at || '').replace('T', ' ').slice(0, 16)}</span>
+      </div>
+      {open && <ReviewDetail it={it} onActed={onActed} />}
+    </div>
+  );
+}
+
 export default function SupervisorAdmin() {
   const [metrics, setMetrics] = React.useState(null);
   const [status, setStatus] = React.useState('new');
   const [items, setItems] = React.useState(null);
+  const [openId, setOpenId] = React.useState(null);
   const [err, setErr] = React.useState(null);
 
   const loadMetrics = React.useCallback(() => {
@@ -134,7 +172,7 @@ export default function SupervisorAdmin() {
   }, []);
 
   const loadQueue = React.useCallback(() => {
-    setItems(null); setErr(null);
+    setItems(null); setErr(null); setOpenId(null);
     apiGet(`feedback-list.php?status=${status}`)
       .then((d) => setItems(d.items || []))
       .catch((e) => { setItems([]); setErr(e.message); });
@@ -178,8 +216,10 @@ export default function SupervisorAdmin() {
       </div>
 
       <div style={cardStyle}>
-        <h2 style={h2Style}>Review queue</h2>
-        <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+        <h2 style={h2Style}>
+          Review queue{items ? ` · ${items.length}` : ''}
+        </h2>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
           {TABS.map((t) => (
             <button key={t.s} onClick={() => setStatus(t.s)}
               style={{ background: status === t.s ? C.blue : '#eef2f9', color: status === t.s ? '#fff' : C.sub, border: 'none', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer' }}>
@@ -189,7 +229,15 @@ export default function SupervisorAdmin() {
         </div>
         {items === null ? <div style={{ color: C.sub }}>Loading…</div>
           : items.length === 0 ? <div style={{ color: C.sub }}>Nothing here.</div>
-          : items.map((it) => <ReviewItem key={it.id} it={it} onActed={onActed} />)}
+          : items.map((it) => (
+              <ReviewRow
+                key={it.id}
+                it={it}
+                open={openId === it.id}
+                onToggle={() => setOpenId((cur) => (cur === it.id ? null : it.id))}
+                onActed={onActed}
+              />
+            ))}
         {err && <div style={{ color: C.no, fontSize: 12, marginTop: 8 }}>{err}</div>}
       </div>
     </div>
