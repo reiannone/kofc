@@ -1,8 +1,8 @@
 <?php
 /**
  * recommend.php — core endpoint.
- * Flow: cors -> auth -> validate profile -> load KB -> build strict-JSON prompt -> call AI (or mock)
- *       -> parse -> run guardrails -> persist (audit) -> return.
+ * Flow: cors -> auth -> validate -> load KB -> strict-JSON prompt (+ retrieved passages)
+ *       -> AI (or mock) -> parse -> guardrails -> persist (audit) -> return.
  */
 declare(strict_types=1);
 session_start();
@@ -10,7 +10,10 @@ header('Content-Type: application/json');
 
 require __DIR__ . '/cors.php';
 require __DIR__ . '/config.php';
+require __DIR__ . '/ai.php';
 require __DIR__ . '/guardrails.php';
+require __DIR__ . '/kb.php';
+require __DIR__ . '/prompts.php';
 
 kofc_cors();
 
@@ -25,6 +28,11 @@ try {
         exit;
     }
 
+    // Derive age from DOB when age wasn't supplied (keeps the 18+ gate working either way).
+    if ((!isset($profile['age']) || $profile['age'] === '' || $profile['age'] === null) && !empty($profile['member_dob'])) {
+        $profile['age'] = kofc_age_from_dob((string)$profile['member_dob']);
+    }
+
     if (!isset($profile['age']) || (int)$profile['age'] < 18) {
         http_response_code(422);
         echo json_encode(['error' => 'age is required and must be 18+']);
@@ -34,7 +42,13 @@ try {
     $kb = require __DIR__ . '/products.php';
 
     [$system, $userMsg] = kofc_build_prompt($profile, $kb);
-    $aiRaw   = kofc_call_ai($system, $userMsg);
+
+    // Retrieval: pull the closest KofC source passages and append them to the prompt.
+    // Returns '' safely when the KB is empty, errors, or ai_mock is on.
+    $kbCtx = kofc_kb_context(($profile['primary_goal'] ?? '') . ' KofC insurance options');
+    if ($kbCtx !== '') { $userMsg .= "\n\n" . $kbCtx; }
+
+    $aiRaw   = AI_MOCK ? kofc_mock_ai() : kofc_ai_complete($system, $userMsg, true);
     $parsed  = kofc_extract_json($aiRaw);
 
     $items   = $parsed['recommendations'] ?? [];
@@ -79,67 +93,15 @@ function kofc_build_prompt(array $profile, array $kb): array
         'riders'   => $kb['riders'],
     ], JSON_PRETTY_PRINT);
 
-    $system =
-        "You are an initial-recommendation engine for Knights of Columbus field agents.\n"
-      . "You ONLY recommend from the provided KofC product catalog. You never invent products,\n"
-      . "rates, or guarantees. You produce an INITIAL recommendation for a licensed agent to\n"
-      . "review — not a suitability determination.\n\n"
-      . "Eligibility context: " . $kb['eligibility_note'] . "\n\n"
-      . "Rank up to 4 products by fit. For each, give a confidence (0.0-1.0), a plain-language\n"
-      . "rationale tied to the member's stated facts, relevant rider suggestions, and a rough\n"
-      . "estimated_annual_premium ONLY if reasonably inferable (else null). Be conservative;\n"
-      . "if data is thin, lower confidence and say what's missing.\n\n"
-      . "Respond with ONLY a JSON object, no markdown, no preamble, in exactly this shape:\n"
-      . '{"recommendations":[{"product_id":"","product_name":"","confidence":0.0,'
-      . '"rationale":"","suggested_riders":[],"estimated_annual_premium":null,"missing_info":[]}]}';
+    $system = kofc_render(kofc_prompt_or('recommend_system'), [
+        'eligibility_note' => $kb['eligibility_note'] ?? '',
+    ]);
 
     $userMsg =
         "MEMBER PROFILE:\n" . json_encode($profile, JSON_PRETTY_PRINT) . "\n\n"
       . "KofC PRODUCT CATALOG:\n" . $catalog;
 
     return [$system, $userMsg];
-}
-
-function kofc_call_ai(string $system, string $userMsg): string
-{
-    if (AI_MOCK) {
-        return kofc_mock_ai();
-    }
-
-    $payload = [
-        'model'      => AI_MODEL,
-        'max_tokens' => AI_MAX_TOKENS,
-        'system'     => $system,
-        'messages'   => [['role' => 'user', 'content' => $userMsg]],
-    ];
-
-    $ch = curl_init('https://api.anthropic.com/v1/messages');
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_POST           => true,
-        CURLOPT_HTTPHEADER     => [
-            'content-type: application/json',
-            'x-api-key: ' . ANTHROPIC_API_KEY,
-            'anthropic-version: 2023-06-01',
-        ],
-        CURLOPT_POSTFIELDS     => json_encode($payload),
-        CURLOPT_TIMEOUT        => 45,
-    ]);
-    $resp = curl_exec($ch);
-    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    if ($resp === false || $code >= 300) {
-        throw new RuntimeException('AI call failed (HTTP ' . $code . ')');
-    }
-    curl_close($ch);
-
-    $data = json_decode($resp, true);
-    $text = '';
-    foreach (($data['content'] ?? []) as $block) {
-        if (($block['type'] ?? '') === 'text') {
-            $text .= $block['text'];
-        }
-    }
-    return $text;
 }
 
 /**
@@ -175,4 +137,16 @@ function kofc_extract_json(string $text): array
     $json = substr($text, $start, $end - $start + 1);
     $decoded = json_decode($json, true);
     return is_array($decoded) ? $decoded : ['recommendations' => []];
+}
+
+/** Whole-year age from a date-of-birth string, or null if unparseable / out of range. */
+function kofc_age_from_dob(string $dob): ?int
+{
+    try {
+        $d   = new DateTime($dob);
+        $age = (new DateTime('today'))->diff($d)->y;
+        return ($age >= 0 && $age <= 120) ? $age : null;
+    } catch (Throwable $e) {
+        return null;
+    }
 }

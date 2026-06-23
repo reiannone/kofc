@@ -16,6 +16,7 @@ require __DIR__ . '/cors.php';
 require __DIR__ . '/config.php';
 require __DIR__ . '/ai.php';
 require __DIR__ . '/kb.php';
+require __DIR__ . '/prompts.php';
 
 kofc_cors();
 
@@ -60,6 +61,15 @@ try {
 
     $kb = require __DIR__ . '/products.php';
     $messages = [['role' => 'system', 'content' => kofc_chat_system($kb)]];
+
+    // If the agent has already recorded structured profile facts on the Recommend tab,
+    // hand them to the model so it doesn't re-ask and can build on them.
+    $known = (is_array($body) && isset($body['profile']) && is_array($body['profile']))
+        ? kofc_known_profile_block($body['profile']) : '';
+    if ($known !== '') {
+        $messages[] = ['role' => 'system', 'content' => $known];
+    }
+
     foreach ($history as $row) {
         $messages[] = ['role' => $row['role'], 'content' => $row['content']];
     }
@@ -92,23 +102,9 @@ try {
 
 function kofc_chat_system(array $kb): string
 {
-    return
-        "You are a planning partner for a Knights of Columbus field agent (sales rep). The agent\n"
-      . "describes a client's situation in their own words; you help them build and refine a plan.\n"
-      . "Converse naturally — never demand a form. Ask at most one or two clarifying questions when\n"
-      . "something important is missing; otherwise proceed with reasonable assumptions and state them.\n\n"
-      . "Ground everything in the provided KofC product catalog and any retrieved KofC source/training\n"
-      . "passages. Prefer retrieved passages and cite the source in brackets. Never invent products,\n"
-      . "rates, or guarantees.\n\n"
-      . "When you have enough to work with, give the agent a working plan they can refine: the client's\n"
-      . "needs as you understand them, a prioritized product approach with plain rationale, how to\n"
-      . "position it for THIS client (informed by KofC training material when available), discovery\n"
-      . "questions still worth asking, likely objections and suggested responses, and any suitability\n"
-      . "flags to keep in mind.\n\n"
-      . "This is support for the licensed agent, who owns the final recommendation and all client\n"
-      . "contact. It is not a suitability determination. Frame guidance as coaching for the agent, not\n"
-      . "a script to read verbatim to the member.\n\n"
-      . "Eligibility context: " . $kb['eligibility_note'];
+    return kofc_render(kofc_prompt_or('chat_system'), [
+        'eligibility_note' => $kb['eligibility_note'] ?? '',
+    ]);
 }
 
 function kofc_mock_chat(string $message): string
@@ -118,4 +114,49 @@ function kofc_mock_chat(string $message): string
          . "training passages, and lay out a working plan — needs, prioritized products, how to position "
          . "it, questions still to ask, likely objections, and any suitability flags. Set ai_mock to false "
          . "for real, grounded planning.";
+}
+
+/**
+ * Format the structured Recommend-tab profile as authoritative known facts for the model.
+ * Skips blank/unknown fields. Returns '' when nothing is set.
+ */
+function kofc_known_profile_block(array $p): string
+{
+    $humanize = static fn ($s) => ucfirst(str_replace('_', ' ', (string) $s));
+    $lines = [];
+
+    if (isset($p['age']) && $p['age'] !== '' && $p['age'] !== null) {
+        $lines[] = 'Age: ' . (int) $p['age'];
+    }
+    if (!empty($p['marital_status'])) {
+        $lines[] = 'Marital status: ' . $humanize($p['marital_status']);
+    }
+    if (isset($p['has_dependents']) && $p['has_dependents'] !== '' && $p['has_dependents'] !== null) {
+        $hd = $p['has_dependents'];
+        $hd = is_bool($hd) ? ($hd ? 'yes' : 'no') : (string) $hd;
+        $lines[] = 'Has dependents: ' . $hd;
+    }
+    if (isset($p['annual_income']) && $p['annual_income'] !== '' && $p['annual_income'] !== null) {
+        $lines[] = 'Annual income: $' . number_format((float) $p['annual_income']);
+    }
+    if (array_key_exists('currently_employed', $p) && is_bool($p['currently_employed'])) {
+        $lines[] = 'Currently employed: ' . ($p['currently_employed'] ? 'yes' : 'no');
+    }
+    if (!empty($p['primary_goal'])) {
+        $lines[] = 'Primary goal: ' . $humanize($p['primary_goal']);
+    }
+    if (!empty($p['existing_coverage'])) {
+        $lines[] = 'Existing coverage: ' . trim((string) $p['existing_coverage']);
+    }
+    if (isset($p['budget_monthly']) && $p['budget_monthly'] !== '' && $p['budget_monthly'] !== null) {
+        $lines[] = 'Monthly budget: $' . number_format((float) $p['budget_monthly']);
+    }
+
+    if (!$lines) {
+        return '';
+    }
+
+    return "The agent has already recorded these client facts in the structured profile. "
+         . "Treat them as authoritative, do NOT re-ask them, and build on them:\n- "
+         . implode("\n- ", $lines);
 }

@@ -13,6 +13,7 @@ require __DIR__ . '/cors.php';
 require __DIR__ . '/config.php';
 require __DIR__ . '/ai.php';
 require __DIR__ . '/kb.php';
+require __DIR__ . '/prompts.php';
 kofc_cors();
 
 try {
@@ -67,19 +68,9 @@ function kofc_generate_sheet(string $transcript, array $profile, array $kb): str
     $catalog = json_encode(['products' => $kb['products'], 'riders' => $kb['riders']], JSON_PRETTY_PRINT);
     $kbCtx   = kofc_kb_context(($profile['primary_goal'] ?? '') . ' KofC insurance options');
 
-    $system =
-        "You write a concise KofC client DEAL SHEET for a licensed Knights of Columbus field agent to\n"
-      . "review and refine. Output GitHub-flavored Markdown only — no preamble, no code fences around the\n"
-      . "whole thing. Ground every product reference in the provided catalog and any retrieved KofC\n"
-      . "passages; never invent products, rates, or guarantees. This is agent decision-support, not a\n"
-      . "suitability determination.\n\n"
-      . "Use exactly these level-3 headings, in this order:\n"
-      . "### Client Summary\n### Identified Needs\n### Recommended Products\n### Rationale\n"
-      . "### Positioning & Talking Points\n### Suitability Flags\n### Next Steps\n\n"
-      . "In Recommended Products use a Markdown table with columns: Product | Why it fits | Riders | "
-      . "Est. annual premium (use '—' when not reasonably inferable). Be specific and brief. Where the\n"
-      . "client's facts are thin, say what is missing rather than guessing.\n\n"
-      . "Eligibility context: " . $kb['eligibility_note'];
+    $system = kofc_render(kofc_prompt_or('deal_sheet_system'), [
+        'eligibility_note' => $kb['eligibility_note'] ?? '',
+    ]);
 
     $user =
         "CLIENT PROFILE (structured):\n" . json_encode($profile, JSON_PRETTY_PRINT) . "\n\n"

@@ -1,12 +1,17 @@
 <?php
 /**
- * kb.php — retrieval over embedded KofC source documents (RAG).
- * MySQL + PHP cosine: zero new infra, fits XAMPP and RDS. For a large corpus, swap the
- * brute-force scan for a vector index (pgvector / OpenSearch / Pinecone) behind the same
- * kofc_kb_search() interface — nothing else changes.
+ * kb.php — retrieval over embedded KofC source documents, collection-aware and WEIGHTED.
+ * MySQL + PHP cosine: zero new infra. Swap kofc_kb_context's scan for a vector index later.
+ *
+ * Selection (kofc_kb_context): score every chunk, drop sub-floor noise, multiply by the
+ * collection weight, then choose by weighted score — guaranteeing per-collection minimums
+ * (e.g. binding regulations) and capping each collection so none monopolizes the budget.
+ * Output is grouped in AUTHORITY ORDER and labeled, so the model still knows which sources bind.
  */
 
 define('KOFC_EMBED_MODEL', 'text-embedding-3-small');
+// Fallback only — real caps/weights/floor live in collections.php (and any supervisor override).
+define('KOFC_DEFAULT_MIX', json_encode(['regulations' => 3, 'policy' => 3, 'vetted' => 3, 'sales' => 2]));
 
 function kofc_embed(string $text): array
 {
@@ -31,6 +36,57 @@ function kofc_embed(string $text): array
     return $data['data'][0]['embedding'] ?? [];
 }
 
+/**
+ * Supervisor-saved retrieval overrides (weights/floor/mix/min/k), or [] when unset.
+ * Fails safe to file defaults if the kb_tuning table doesn't exist yet.
+ */
+function kofc_kb_tuning(): array
+{
+    try {
+        $row = kofc_db()->query('SELECT config FROM kb_tuning WHERE id = 1')->fetchColumn();
+        if ($row) { $c = json_decode($row, true); if (is_array($c)) return $c; }
+    } catch (Throwable $e) {
+        // table absent or db error -> defaults apply
+    }
+    return [];
+}
+
+/** The collections.php tuning defaults, for the supervisor UI's "reset" and as the floor of merges. */
+function kofc_kb_defaults(): array
+{
+    $meta = require __DIR__ . '/collections.php';
+    return [
+        'weights' => $meta['weights'] ?? [],
+        'floor'   => $meta['floor']   ?? 0.0,
+        'mix'     => $meta['mix']     ?? [],
+        'min'     => $meta['min']     ?? [],
+        'k'       => $meta['k']       ?? 6,
+    ];
+}
+
+/**
+ * Tighten a raw agent message into a focused retrieval query before embedding.
+ * Uses the editable 'query_rewrite' prompt when available. Fails safe to the original text
+ * (mock mode, no AI helper, empty result, or any error).
+ */
+function kofc_refine_query(string $text): string
+{
+    $text = trim($text);
+    if ($text === '' || AI_MOCK) return $text;
+    if (!function_exists('kofc_ai_complete')) return $text;
+    $sys = function_exists('kofc_prompt_or')
+        ? kofc_prompt_or('query_rewrite')
+        : 'Rewrite the message into a single concise search query for KofC product, policy, and regulation passages. Output only the query.';
+    if (trim($sys) === '') return $text;
+    try {
+        $q = trim((string)kofc_ai_complete($sys, $text, false));
+        $q = trim($q, " \t\n\r\"'");
+        return ($q !== '' && mb_strlen($q) <= 400) ? $q : $text;
+    } catch (Throwable $e) {
+        return $text;
+    }
+}
+
 function kofc_cosine(array $a, array $b): float
 {
     $n = min(count($a), count($b));
@@ -44,44 +100,106 @@ function kofc_cosine(array $a, array $b): float
     return $dot / (sqrt($na) * sqrt($nb));
 }
 
-function kofc_kb_search(string $query, int $k = 4): array
+/**
+ * Prompt-ready retrieval block: weighted, floored, budgeted, authority-ordered.
+ * Returns '' safely when mocked, empty, or on any error.
+ *
+ * @param string     $query   the search text
+ * @param int        $k       total passage budget; 0 = use config 'k'
+ * @param array|null $tuning  optional override of weights|floor|mix|min|k (e.g. supervisor config)
+ */
+function kofc_kb_context(string $query, int $k = 0, ?array $tuning = null): string
 {
-    $qv = kofc_embed($query);
-    if (!$qv) return [];
-    $rows = kofc_db()->query('SELECT source, chunk_text, embedding FROM kb_chunks')->fetchAll();
-    $scored = [];
+    if (AI_MOCK) return '';
+    $meta   = require __DIR__ . '/collections.php';
+    $tuning = is_array($tuning) ? $tuning : [];
+    $stored = kofc_kb_tuning();   // supervisor-saved overrides (empty until the table exists / is set)
+
+    // Precedence: explicit $tuning arg  >  supervisor-saved row  >  collections.php defaults.
+    $weights = $tuning['weights'] ?? $stored['weights'] ?? ($meta['weights'] ?? []);
+    $floor   = (float)($tuning['floor'] ?? $stored['floor'] ?? ($meta['floor'] ?? 0.0));
+    $caps    = $tuning['mix']     ?? $stored['mix']  ?? ($meta['mix']  ?? json_decode(KOFC_DEFAULT_MIX, true));
+    $mins    = $tuning['min']     ?? $stored['min']  ?? ($meta['min']  ?? []);
+    $budget  = $k > 0 ? $k : (int)($tuning['k'] ?? $stored['k'] ?? ($meta['k'] ?? 6));
+    $rewrite = (bool)($tuning['rewrite'] ?? $stored['rewrite'] ?? ($meta['rewrite'] ?? true));
+
+    try {
+        $qv = kofc_embed($rewrite ? kofc_refine_query($query) : $query);
+        if (!$qv) return '';
+        $rows = kofc_db()->query('SELECT source, collection, chunk_text, embedding FROM kb_chunks')->fetchAll();
+    } catch (Throwable $e) {
+        error_log('kb_context: ' . $e->getMessage());
+        return '';
+    }
+    if (!$rows) return '';
+
+    // 1) Score every chunk, drop sub-floor noise, apply the collection weight.
+    $pool = [];
     foreach ($rows as $r) {
         $emb = json_decode($r['embedding'], true);
         if (!is_array($emb)) continue;
-        $scored[] = [
+        $col = (isset($r['collection']) && $r['collection'] !== '') ? $r['collection'] : 'policy';
+        if (($caps[$col] ?? 0) <= 0) continue;             // collection not part of this query's mix
+        $raw = kofc_cosine($qv, $emb);
+        if ($raw < $floor) continue;                        // relevance floor
+        $w   = isset($weights[$col]) ? (float)$weights[$col] : 1.0;
+        $pool[] = [
             'source'     => $r['source'],
+            'collection' => $col,
             'chunk_text' => $r['chunk_text'],
-            'score'      => kofc_cosine($qv, $emb),
+            'raw'        => $raw,
+            'eff'        => $raw * $w,
         ];
     }
-    usort($scored, fn($x, $y) => $y['score'] <=> $x['score']);
-    return array_slice($scored, 0, $k);
-}
+    if (!$pool) return '';
+    usort($pool, fn($a, $b) => $b['eff'] <=> $a['eff']);
 
-/**
- * Prompt-ready retrieval block. Returns '' safely when mocked, empty, or on any error,
- * so the endpoints never break if the KB isn't populated yet.
- */
-function kofc_kb_context(string $query, int $k = 4): string
-{
-    if (AI_MOCK) return '';
-    try {
-        $hits = kofc_kb_search($query, $k);
-    } catch (Throwable $e) {
-        error_log('kb_search: ' . $e->getMessage());
-        return '';
+    // 2) Select: guarantee per-collection minimums first (e.g. binding regs), then fill the rest
+    //    by weighted score — all bounded by per-collection caps and the total budget.
+    $chosen = [];
+    $used   = [];
+    $taken  = [];
+    $take = function (int $i, array $h) use (&$chosen, &$used, &$taken, $caps, $budget): bool {
+        if (count($chosen) >= $budget) return false;
+        $c = $h['collection'];
+        if (($used[$c] ?? 0) >= ($caps[$c] ?? 0)) return false;
+        $used[$c]   = ($used[$c] ?? 0) + 1;
+        $taken[$i]  = true;
+        $chosen[]   = $h;
+        return true;
+    };
+
+    foreach ($mins as $col => $need) {
+        $got = 0;
+        foreach ($pool as $i => $h) {
+            if ($got >= (int)$need || count($chosen) >= $budget) break;
+            if ($h['collection'] !== $col || isset($taken[$i])) continue;
+            if ($take($i, $h)) $got++;
+        }
     }
-    if (!$hits) return '';
-    $out = "RETRIEVED KofC SOURCE PASSAGES (prefer these; cite the source in brackets):\n\n";
-    foreach ($hits as $h) {
-        $out .= '[' . $h['source'] . "]\n" . trim($h['chunk_text']) . "\n\n";
+    foreach ($pool as $i => $h) {
+        if (count($chosen) >= $budget) break;
+        if (isset($taken[$i])) continue;
+        $take($i, $h);
     }
-    return rtrim($out);
+    if (!$chosen) return '';
+
+    // 3) Present grouped by AUTHORITY ORDER, labeled, with the preamble.
+    $bySel = [];
+    foreach ($chosen as $h) $bySel[$h['collection']][] = $h;
+
+    $out = $meta['preamble'] . "\n\n";
+    $any = false;
+    foreach ($meta['authority_order'] as $col) {
+        if (empty($bySel[$col])) continue;
+        usort($bySel[$col], fn($a, $b) => $b['eff'] <=> $a['eff']);
+        $any = true;
+        $out .= '[' . strtoupper($meta['labels'][$col]) . "]\n";
+        foreach ($bySel[$col] as $h) {
+            $out .= '[' . $h['source'] . '] ' . trim($h['chunk_text']) . "\n\n";
+        }
+    }
+    return $any ? rtrim($out) : '';
 }
 
 function kofc_chunk(string $text, int $max = 1000): array
@@ -106,4 +224,27 @@ function kofc_chunk(string $text, int $max = 1000): array
     }
     if ($buf !== '') $chunks[] = $buf;
     return $chunks;
+}
+
+/**
+ * Shared: embed + chunk + store a document's text under a collection.
+ * Replaces any prior chunks for the same source (idempotent). Returns chunk count.
+ */
+function kofc_kb_store(string $source, string $collection, string $text): int
+{
+    $pdo = kofc_db();
+    $pdo->prepare('DELETE FROM kb_chunks WHERE source = :s')->execute([':s' => $source]);
+    $chunks = kofc_chunk($text);
+    $ins = $pdo->prepare(
+        'INSERT INTO kb_chunks (source, collection, chunk_index, chunk_text, embedding, created_at)
+         VALUES (:s, :c, :i, :t, :e, NOW())'
+    );
+    $n = 0;
+    foreach ($chunks as $i => $chunk) {
+        $emb = kofc_embed($chunk);
+        if (!$emb) continue;
+        $ins->execute([':s' => $source, ':c' => $collection, ':i' => $i, ':t' => $chunk, ':e' => json_encode($emb)]);
+        $n++;
+    }
+    return $n;
 }
