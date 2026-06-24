@@ -29,7 +29,7 @@ export default function Login({ onLogin }) {
     <div style={{ fontFamily: 'system-ui, sans-serif', background: C.bg, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 12, padding: 28, width: 320 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: C.navy, marginBottom: 18 }}>
-          <Shield size={20} /><strong style={{ fontSize: 16 }}>KofC AI Advisor</strong>
+          <Shield size={20} /><strong style={{ fontSize: 16 }}>KofC AI Agent</strong>
         </div>
         <input style={input} placeholder="Username" value={u}
           onChange={(e) => setU(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} />

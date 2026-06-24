@@ -109,7 +109,7 @@ function kofc_chat_system(array $kb): string
 
 function kofc_mock_chat(string $message): string
 {
-    return "Mock advisor reply. In live mode I'd read what you told me about the client "
+    return "Mock Agent reply. In live mode I'd read what you told me about the client "
          . "(you said: \"" . mb_substr($message, 0, 120) . "\"), pull the relevant KofC product and "
          . "training passages, and lay out a working plan — needs, prioritized products, how to position "
          . "it, questions still to ask, likely objections, and any suitability flags. Set ai_mock to false "
