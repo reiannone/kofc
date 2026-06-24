@@ -299,7 +299,7 @@ export default function App({ user, onLogout }) {
       const known = profileTouched ? cleanProfile(profile) : null;
       const data = await apiPost('chat.php', {
         message: text, conversation_id: convId, profile: known,
-        deal_id: dealId || undefined,
+        deal_id: dealIdRef.current || undefined,
       });
       setConvId(data.conversation_id);
       setMessages((m) => [...m, { role: 'assistant', content: data.reply }]);
@@ -318,7 +318,7 @@ export default function App({ user, onLogout }) {
     setMessages([]); setConvId(null); setInput(''); setError(null);
     setFb({}); setDownIdx(null); setNeeds([]); setHold(false);
     setPullNote(''); setFilledKeys(new Set()); autoPulledRef.current = null;
-    setDealId(null); setClientName(''); setDealTitle(''); setDealStatus('draft'); setDealSheet(''); setView('chat'); setDealMsg('');
+    setDealId(null); dealIdRef.current = null; setClientName(''); setDealTitle(''); setDealStatus('draft'); setDealSheet(''); setView('chat'); setDealMsg('');
   }
 
   async function sendFeedback(idx, vote, reason, fix) {
@@ -463,6 +463,7 @@ export default function App({ user, onLogout }) {
 
   // ================= DEALS (workspace on the AI Agent tab) =================
   const [dealId, setDealId] = React.useState(null);
+  const dealIdRef = React.useRef(null); // synchronous mirror of dealId; sendMessage reads this to avoid setState render lag
   const [clientName, setClientName] = React.useState('');
   const [dealTitle, setDealTitle] = React.useState('');
   const [dealStatus, setDealStatus] = React.useState('draft');
@@ -484,6 +485,7 @@ export default function App({ user, onLogout }) {
       deal_sheet: dealSheet || null,
     });
     setDealId(data.deal_id);
+    dealIdRef.current = data.deal_id;
     if (data.status) setDealStatus(data.status);
     if (data.title) setDealTitle(data.title); // reflect server-applied default when left blank
     return data.deal_id;
@@ -505,6 +507,7 @@ export default function App({ user, onLogout }) {
       const d = await apiGet(`deal-get.php?id=${id}`);
       const deal = d.deal || {};
       setDealId(deal.id || id);
+      dealIdRef.current = deal.id || id;
       setClientName(deal.client_name || '');
       setDealTitle(deal.title || '');
       setDealStatus(deal.status || 'draft');
