@@ -276,6 +276,7 @@ export default function App({ user, onLogout }) {
     try {
       await apiPost('feedback.php', {
         ref_type: 'chat', ref_id: convId, vote,
+        title: (dealTitle || clientName || '').trim() || null,
         reason_code: reason || null, suggested_answer: fix || null,
         question_text: question, answer_text: answer,
       });
