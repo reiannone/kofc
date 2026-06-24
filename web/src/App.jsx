@@ -266,7 +266,7 @@ export default function App({ user, onLogout }) {
     setMessages([]); setConvId(null); setInput(''); setError(null);
     setFb({}); setDownIdx(null);
     setPullNote(''); setFilledKeys(new Set()); autoPulledRef.current = null;
-    setDealId(null); setClientName(''); setDealStatus('draft'); setDealSheet(''); setView('chat'); setDealMsg('');
+    setDealId(null); setClientName(''); setDealTitle(''); setDealStatus('draft'); setDealSheet(''); setView('chat'); setDealMsg('');
   }
 
   async function sendFeedback(idx, vote, reason, fix) {
@@ -403,6 +403,7 @@ export default function App({ user, onLogout }) {
   // ================= DEALS (workspace on the AI Agent tab) =================
   const [dealId, setDealId] = React.useState(null);
   const [clientName, setClientName] = React.useState('');
+  const [dealTitle, setDealTitle] = React.useState('');
   const [dealStatus, setDealStatus] = React.useState('draft');
   const [deals, setDeals] = React.useState(null);
   const [view, setView] = React.useState('chat'); // 'chat' | 'deals' | 'sheet'
@@ -417,11 +418,13 @@ export default function App({ user, onLogout }) {
       deal_id: dealId,
       conversation_id: convId,
       client_name: clientName,
+      title: dealTitle,
       profile: cleanProfile(profile) || {},
       deal_sheet: dealSheet || null,
     });
     setDealId(data.deal_id);
     if (data.status) setDealStatus(data.status);
+    if (data.title) setDealTitle(data.title); // reflect server-applied default when left blank
     return data.deal_id;
   }
   async function saveDeal() {
@@ -442,6 +445,7 @@ export default function App({ user, onLogout }) {
       const deal = d.deal || {};
       setDealId(deal.id || id);
       setClientName(deal.client_name || '');
+      setDealTitle(deal.title || '');
       setDealStatus(deal.status || 'draft');
       setDealSheet(deal.deal_sheet || '');
       setConvId(deal.conversation_id || null);
@@ -487,6 +491,8 @@ export default function App({ user, onLogout }) {
   function renderDealBar() {
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: `1px solid ${C.border}`, background: C.card, flexWrap: 'wrap' }}>
+        <input value={dealTitle} onChange={(e) => setDealTitle(e.target.value)} placeholder="Deal title"
+          style={{ ...inputStyle, width: 200, padding: '6px 8px', fontSize: 13 }} title="Names this deal in your list. Left blank, it defaults to the client (or your name) plus the date." />
         <input value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Client name"
           style={{ ...inputStyle, width: 150, padding: '6px 8px', fontSize: 13 }} />
         <button onClick={saveDeal} disabled={dealBusy} style={dealBtn} title="Save work in progress">
@@ -520,8 +526,8 @@ export default function App({ user, onLogout }) {
               <div key={d.id} onClick={() => openDeal(d.id)} role="button" tabIndex={0}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDeal(d.id); } }}
                 style={{ display: 'flex', alignItems: 'center', gap: 10, border: `1px solid ${C.border}`, borderRadius: 8, padding: '10px 12px', marginBottom: 8, cursor: 'pointer', background: '#fff' }}>
-                <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: d.client_name ? C.text : C.sub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {d.client_name || '(unnamed client)'}
+                <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: (d.title || d.client_name) ? C.text : C.sub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {d.title || d.client_name || '(untitled deal)'}
                 </span>
                 {Number(d.has_sheet) ? <FileText size={13} color={C.sub} /> : null}
                 <span style={pill(d.status)}>{d.status}</span>

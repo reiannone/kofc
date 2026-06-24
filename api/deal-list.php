@@ -14,7 +14,7 @@ try {
     $status  = $_GET['status'] ?? 'all';
     $valid   = ['draft', 'submitted', 'approved', 'returned'];
     $pdo     = kofc_db();
-    $cols    = 'id, client_name, status, conversation_id, updated_at,
+    $cols    = 'id, title, client_name, status, conversation_id, updated_at,
                 (deal_sheet IS NOT NULL AND deal_sheet <> "") AS has_sheet';
     if (in_array($status, $valid, true)) {
         $st = $pdo->prepare("SELECT $cols FROM deals WHERE agent_id = :a AND status = :s ORDER BY updated_at DESC");

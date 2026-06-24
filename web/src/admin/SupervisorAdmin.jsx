@@ -218,8 +218,10 @@ function DealReviewDetail({ id, onActed }) {
 
   return (
     <div style={{ borderTop: `1px solid ${C.border}`, padding: 14, background: '#fbfcfe' }}>
+      {deal.title && <div style={{ fontSize: 14, fontWeight: 600, color: C.navy, marginBottom: 6 }}>{deal.title}</div>}
       <div style={{ fontSize: 12, color: C.sub, marginBottom: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <span>agent: {deal.agent_id}</span>
+        {deal.client_name && <span>· client: {deal.client_name}</span>}
         {deal.reviewed_by && <span>· reviewed by {deal.reviewed_by}</span>}
         {deal.reviewed_at && <span>· {(deal.reviewed_at || '').replace('T', ' ')}</span>}
       </div>
@@ -261,8 +263,8 @@ function DealReviewRow({ it, open, onToggle, onActed }) {
         onKeyDown={(ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); onToggle(); } }}
         style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', cursor: 'pointer', background: open ? '#eef2f9' : '#fff' }}>
         <span style={{ color: C.sub, fontSize: 11, width: 10, flexShrink: 0, display: 'inline-block', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .12s' }}>▸</span>
-        <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: it.client_name ? C.text : C.sub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {it.client_name || '(unnamed client)'}
+        <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: (it.title || it.client_name) ? C.text : C.sub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {it.title || it.client_name || '(untitled deal)'}
         </span>
         <span style={{ fontSize: 11, color: C.sub, flexShrink: 0 }}>{it.agent_id}</span>
         <span style={dpill(it.status)}>{it.status}</span>
