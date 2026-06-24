@@ -282,21 +282,26 @@ export default function App({ user, onLogout }) {
   const REASONS = ['wrong_product', 'missing_regulation', 'factual_error', 'outdated', 'tone', 'other'];
   const [needs, setNeeds] = React.useState([]);   // gap-elicitation prompts from chat.php
   const [hold, setHold] = React.useState(false);  // required gaps remain -> recommendation withheld
+  const [pendingFills, setPendingFills] = React.useState([]); // chip answers filled but not yet sent
 
   React.useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, sending]);
 
-  async function sendMessage() {
-    const text = input.trim();
-    if (!text || sending) return;
+  // Core chat turn. `text` is the message; `profileForSend` overrides the default
+  // profile-send logic (used by chip-driven refreshes that must send freshly-filled
+  // values without waiting for state to commit).
+  async function runChatTurn(text, { profileForSend } = {}) {
+    if (sending) return;
     if (listening) stopListening();
     setError(null);
     setMessages((m) => [...m, { role: 'user', content: text }]);
-    setInput('');
+    setPendingFills([]);
     setSending(true);
     try {
-      const known = profileTouched ? cleanProfile(profile) : null;
+      const known = profileForSend !== undefined
+        ? profileForSend
+        : (profileTouched ? cleanProfile(profile) : null);
       const data = await apiPost('chat.php', {
         message: text, conversation_id: convId, profile: known,
         deal_id: dealIdRef.current || undefined,
@@ -312,11 +317,33 @@ export default function App({ user, onLogout }) {
       setSending(false);
     }
   }
+
+  async function sendMessage() {
+    const text = input.trim();
+    if (!text || sending) return;
+    setInput('');
+    await runChatTurn(text);
+  }
+
+  // Re-run the advisor with the chip answers the agent has filled. Triggered by the
+  // tray's "Update plan" button, and automatically when the last REQUIRED chip is filled.
+  // `override` carries an explicit fills list + profile so an auto-fire on the same tick
+  // as the final fill sends the just-entered value rather than stale state.
+  async function refreshFromFills(override) {
+    if (sending) return;
+    const fills = override?.fills ?? pendingFills;
+    if (!override && fills.length === 0) return;
+    const summary = fills.length
+      ? 'Updated client details — ' + fills.map((f) => `${f.label}: ${f.display}`).join('; ') + '.'
+      : 'Please update the plan with the latest client details.';
+    const known = override?.profile ?? (cleanProfile(profile) || {});
+    await runChatTurn(summary, { profileForSend: known });
+  }
   function newConversation() {
     if (listening) stopListening();
     window.speechSynthesis?.cancel();
     setMessages([]); setConvId(null); setInput(''); setError(null);
-    setFb({}); setDownIdx(null); setNeeds([]); setHold(false);
+    setFb({}); setDownIdx(null); setNeeds([]); setHold(false); setPendingFills([]);
     setPullNote(''); setFilledKeys(new Set()); autoPulledRef.current = null;
     setDealId(null); dealIdRef.current = null; setClientName(''); setDealTitle(''); setDealStatus('draft'); setDealSheet(''); setView('chat'); setDealMsg('');
   }
@@ -340,12 +367,30 @@ export default function App({ user, onLogout }) {
     }
   }
 
-  // Answer a gap chip: write into the fact-find (via set, which marks the profile
-  // touched so the next turn re-sends it), then drop the chip. The server recomputes
-  // remaining gaps on the next message.
+  // Answer a gap chip: write into the fact-find, record it for the refresh summary,
+  // and drop the chip. When the LAST required chip is filled, auto-refresh so the
+  // now-unblocked plan comes back without the agent having to type anything.
   function fillNeed(field, value) {
+    const need = needs.find((n) => n.field === field);
     set(field, value);
+
+    let display = value;
+    if (need?.input_type === 'select') {
+      const opt = (need.options || []).find((o) => o.value === value);
+      if (opt) display = opt.label;
+    } else if (need?.input_type === 'boolean') {
+      display = value === 'yes' ? 'Yes' : value === 'no' ? 'No' : value;
+    }
+    const entry = { field, label: need?.label || field, display };
+    setPendingFills((p) => [...p.filter((f) => f.field !== field), entry]);
     setNeeds((ns) => ns.filter((n) => n.field !== field));
+
+    const remainingRequired = needs.filter((n) => n.field !== field && n.importance === 'required');
+    if (need?.importance === 'required' && remainingRequired.length === 0) {
+      const fills = [...pendingFills.filter((f) => f.field !== field), entry];
+      const nextProfile = cleanProfile({ ...profile, [field]: value }) || {};
+      refreshFromFills({ fills, profile: nextProfile });
+    }
   }
 
   // ================= RECOMMEND (form) =================
@@ -806,8 +851,23 @@ export default function App({ user, onLogout }) {
                   <NeedInput key={n.field} need={n} onFill={fillNeed} />
                 ))}
               </div>
-              <div style={{ fontSize: 10, color: C.sub, marginTop: 8, lineHeight: 1.4 }}>
-                Tap to fill, or just answer in chat — either way updates the client profile.
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
+                <button
+                  onClick={() => refreshFromFills()}
+                  disabled={sending || pendingFills.length === 0}
+                  style={{
+                    fontSize: 12, fontWeight: 600, padding: '7px 14px', borderRadius: 6, border: 'none',
+                    cursor: (sending || pendingFills.length === 0) ? 'default' : 'pointer',
+                    background: (sending || pendingFills.length === 0) ? C.border : (hold ? '#b45309' : C.blue),
+                    color: '#fff', display: 'flex', alignItems: 'center', gap: 6,
+                  }}>
+                  {sending ? <Loader2 size={13} className="spin" /> : null}
+                  {hold ? 'Update plan' : 'Refresh plan'}
+                  {pendingFills.length > 0 ? ` (${pendingFills.length})` : ''}
+                </button>
+                <span style={{ fontSize: 10, color: C.sub, lineHeight: 1.4 }}>
+                  Fill what you know, then update — or just answer in chat.
+                </span>
               </div>
             </div>
           )}

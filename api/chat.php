@@ -59,43 +59,68 @@ try {
 
     // Retrieval on the latest message (product + training passages).
     $kbCtx = kofc_kb_context($message, 5);
-
     $kb = require __DIR__ . '/products.php';
-    $messages = [['role' => 'system', 'content' => kofc_chat_system($kb)]];
 
-    // If the agent has already recorded structured profile facts on the Recommend tab,
-    // hand them to the model so it doesn't re-ask and can build on them.
+    // Known structured facts (from the Recommend tab), so the model doesn't re-ask.
     $known = (is_array($body) && isset($body['profile']) && is_array($body['profile']))
         ? kofc_known_profile_block($body['profile']) : '';
-    if ($known !== '') {
-        $messages[] = ['role' => 'system', 'content' => $known];
+    $profileForGaps = (is_array($body) && isset($body['profile']) && is_array($body['profile'])) ? $body['profile'] : [];
+
+    // ---- Intent detection + interactive gap elicitation ----
+    // Elicitation runs in any advisor chat (no saved deal required), but only ONCE a
+    // product direction is detectable. We detect via: an explicit product, a goal already
+    // in the structured profile (no extra model call), else a cheap classifier pass.
+    // When required facts are missing, we HOLD: the reply is constrained to gathering and
+    // must not recommend (enforced by swapping the system prompt, not just asking nicely).
+    $explicitProduct = is_array($body) && isset($body['product']) ? (string)$body['product'] : '';
+    $gaps   = null;
+    $held   = false;
+    $detect = ['detectable' => false, 'category' => 'none', 'confidence' => 0.0];
+
+    if (!AI_MOCK) {
+        if ($explicitProduct !== '') {
+            $detect = ['detectable' => true, 'category' => $explicitProduct, 'confidence' => 1.0];
+        } elseif (!empty($profileForGaps['primary_goal'])) {
+            $cat = kofc_goal_to_category((string)$profileForGaps['primary_goal']);
+            if ($cat !== 'none') $detect = ['detectable' => true, 'category' => $cat, 'confidence' => 1.0];
+        } else {
+            $detect = kofc_detect_intent($message, $history);
+        }
     }
 
-    // ---- Interactive gap elicitation (deal context only) ----
-    // Active when the client signals a deal: a chosen `product` category, or a `deal`
-    // flag / deal_id. Outside a deal, behavior is unchanged. Before a product is set,
-    // the shared core drives the questions that narrow the deal toward one.
-    $profileForGaps = (is_array($body) && isset($body['profile']) && is_array($body['profile'])) ? $body['profile'] : [];
-    $product   = is_array($body) && isset($body['product']) ? (string)$body['product'] : '';
-    $inDeal    = $product !== ''
-              || (is_array($body) && !empty($body['deal']))
-              || (is_array($body) && isset($body['deal_id']) && (int)$body['deal_id'] > 0);
-    $gaps = null;
-    if ($inDeal) {
-        $gaps = kofc_product_gaps($product !== '' ? $product : null, $profileForGaps);
-        $brief = kofc_gaps_prompt_brief($gaps);
-        if ($brief !== '') {
-            $messages[] = ['role' => 'system', 'content' => $brief];
-        }
+    if ($detect['detectable'] && $detect['category'] !== 'none') {
+        $gaps = kofc_product_gaps($detect['category'], $profileForGaps);
+        $held = !empty($gaps['hold']);
         if (!empty($gaps['unknown_keys'])) {
             error_log('chat.php gap guard: unknown field_keys dropped: ' . implode(',', $gaps['unknown_keys']));
+        }
+    }
+
+    // Assemble the model messages. Held -> gathering-only mode (the floor). Otherwise the
+    // normal planning advisor, optionally nudged with a sharpening note.
+    if ($held) {
+        $messages = [['role' => 'system', 'content' => kofc_elicitation_system($gaps)]];
+        if ($known !== '') {
+            $messages[] = ['role' => 'system', 'content' => $known];
+        }
+    } else {
+        $messages = [['role' => 'system', 'content' => kofc_chat_system($kb)]];
+        if ($known !== '') {
+            $messages[] = ['role' => 'system', 'content' => $known];
+        }
+        if ($gaps !== null && !empty($gaps['needs'])) {
+            $brief = kofc_gaps_prompt_brief($gaps); // sharpening-only nudge
+            if ($brief !== '') {
+                $messages[] = ['role' => 'system', 'content' => $brief];
+            }
         }
     }
 
     foreach ($history as $row) {
         $messages[] = ['role' => $row['role'], 'content' => $row['content']];
     }
-    if ($kbCtx !== '') {
+    // KB grounding only in planning mode — a gathering turn is just asking questions.
+    if (!$held && $kbCtx !== '') {
         $messages[] = ['role' => 'system', 'content' => "Relevant KofC passages for this turn:\n\n" . $kbCtx];
     }
 
@@ -115,6 +140,7 @@ try {
         'needs'                 => $gaps['needs'] ?? [],
         'hold'                  => $gaps['hold'] ?? false,
         'gap_mode'              => $gaps['mode'] ?? null,
+        'gap_category'          => $detect['category'] ?? null,
         'disclaimer'            => 'AI planning support for KofC field-agent use. Not a suitability '
                                  . 'determination; the licensed agent owns the final plan and all client contact.',
     ]);
@@ -130,6 +156,115 @@ function kofc_chat_system(array $kb): string
     return kofc_render(kofc_prompt_or('chat_system'), [
         'eligibility_note' => $kb['eligibility_note'] ?? '',
     ]);
+}
+
+/**
+ * Cheap classifier pass: does the agent's description yet point to a product direction?
+ * Returns ['detectable'=>bool, 'category'=>term_life|whole_life|annuity|ltc|none, 'confidence'=>float].
+ * Fails safe to not-detectable so a classifier hiccup never blocks the agent.
+ */
+function kofc_detect_intent(string $message, array $history): array
+{
+    $default = ['detectable' => false, 'category' => 'none', 'confidence' => 0.0];
+
+    $ctx = '';
+    foreach ($history as $row) {
+        if (($row['role'] ?? '') === 'user') {
+            $ctx .= '- ' . mb_substr((string)$row['content'], 0, 300) . "\n";
+        }
+    }
+
+    $sys = "You classify whether an insurance field agent's notes about a client yet point to a "
+         . "specific product direction. Categories:\n"
+         . "- term_life: temporary income-replacement; young family, mortgage term, budget temporary coverage.\n"
+         . "- whole_life: permanent / legacy; estate, cash value, lifelong coverage.\n"
+         . "- annuity: retirement income, steady income stream, outliving savings.\n"
+         . "- ltc: long-term care, disability, assisted living, care-cost protection.\n"
+         . "- none: not enough yet, or a general information question.\n"
+         . "Respond with STRICT JSON only, no markdown, no prose: "
+         . '{"detectable": boolean, "category": "term_life|whole_life|annuity|ltc|none", "confidence": number between 0 and 1}';
+    $user = "Client notes so far:\n" . ($ctx !== '' ? $ctx : "(none)\n") . "\nLatest message: " . $message;
+
+    try {
+        $out  = kofc_ai_chat([
+            ['role' => 'system', 'content' => $sys],
+            ['role' => 'user',   'content' => $user],
+        ], false);
+        $json = kofc_extract_json((string)$out);
+        if (!is_array($json)) return $default;
+
+        $cat = $json['category'] ?? 'none';
+        if (!in_array($cat, ['term_life', 'whole_life', 'annuity', 'ltc', 'none'], true)) {
+            $cat = 'none';
+        }
+        return [
+            'detectable' => !empty($json['detectable']) && $cat !== 'none',
+            'category'   => $cat,
+            'confidence' => (float)($json['confidence'] ?? 0),
+        ];
+    } catch (Throwable $e) {
+        error_log('kofc_detect_intent error: ' . $e->getMessage());
+        return $default;
+    }
+}
+
+/**
+ * Pull the first JSON object out of a model reply, tolerating ```fences``` and stray prose.
+ */
+function kofc_extract_json(string $s): ?array
+{
+    $s = trim($s);
+    $s = preg_replace('/^```(?:json)?\s*/i', '', $s);
+    $s = preg_replace('/\s*```$/', '', $s);
+    if (preg_match('/\{.*\}/s', $s, $m)) {
+        $s = $m[0];
+    }
+    $d = json_decode($s, true);
+    return is_array($d) ? $d : null;
+}
+
+/**
+ * Map a fact-find primary_goal to a product category, so a known goal skips the detector.
+ */
+function kofc_goal_to_category(string $goal): string
+{
+    switch ($goal) {
+        case 'income_replacement':
+        case 'mortgage_protection':
+            return 'term_life';
+        case 'estate_legacy':
+            return 'whole_life';
+        case 'retirement_income':
+            return 'annuity';
+        case 'long_term_care':
+            return 'ltc';
+        default:
+            return 'none';
+    }
+}
+
+/**
+ * THE FLOOR: information-gathering system prompt used when required facts are missing.
+ * Replaces the planning prompt entirely so the model has no instruction to recommend —
+ * it acknowledges briefly, then asks for the missing facts, and must not name products.
+ */
+function kofc_elicitation_system(array $gaps): string
+{
+    $req   = $gaps['required_missing'] ?? [];
+    $lines = [];
+    foreach (array_slice($req, 0, 3) as $n) {
+        $lines[] = '- ' . $n['label'] . (!empty($n['why']) ? ' (' . $n['why'] . ')' : '');
+    }
+    $list = $lines ? implode("\n", $lines) : '- (none specified)';
+
+    return "You are a KofC field-agent planning assistant, currently in INFORMATION-GATHERING mode.\n"
+         . "You do NOT yet have enough information to recommend a product, and you MUST NOT recommend, "
+         . "name, compare, or describe any specific product, plan, rider, or strategy in this reply.\n\n"
+         . "Do exactly this, briefly and conversationally:\n"
+         . "1. Acknowledge the client's situation in ONE short sentence.\n"
+         . "2. Ask the agent for the most important missing facts below — at most three, most important first.\n"
+         . "3. Stop there. No recommendations, no 'you might consider', no product names.\n\n"
+         . "Missing facts to collect:\n" . $list;
 }
 
 function kofc_mock_chat(string $message): string
