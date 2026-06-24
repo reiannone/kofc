@@ -32,6 +32,8 @@ function excerpt(s, n = 140) {
 // ---- expanded detail: full meta + answer + Markdown editor (only mounts when a row is open) ----
 function ReviewDetail({ it, onActed }) {
   const promoted = it.status === 'promoted';
+  const fbTitle = it.deal_title || it.title || '';
+  const lead = fbTitle || it.question_text || '';
   const seed = it.final_answer || it.suggested_answer || it.answer_text || '';
   const [draft, setDraft] = React.useState(seed);
   const [msg, setMsg] = React.useState('');
@@ -86,6 +88,12 @@ function ReviewDetail({ it, onActed }) {
 
   return (
     <div style={{ borderTop: `1px solid ${C.border}`, padding: 14, background: '#fbfcfe' }}>
+      {lead && (
+        <div style={{ fontSize: 14, fontWeight: 600, color: C.navy, marginBottom: (fbTitle && it.question_text) ? 2 : 6 }}>{lead}</div>
+      )}
+      {fbTitle && it.question_text && (
+        <div style={{ fontSize: 12, color: C.sub, marginBottom: 6 }}>{it.question_text}</div>
+      )}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, color: C.sub, marginBottom: 8, flexWrap: 'wrap' }}>
         <span style={{ fontWeight: 700, padding: '2px 8px', borderRadius: 10, fontSize: 11, background: it.vote === 'up' ? '#eaf6ec' : '#fdeaec', color: it.vote === 'up' ? C.ok : C.no }}>
           {it.vote === 'up' ? '▲ up' : '▼ down'}
@@ -97,7 +105,6 @@ function ReviewDetail({ it, onActed }) {
         <span>· status: {it.status}</span>
       </div>
 
-      {it.question_text && <div style={q}><b>Q:</b> {it.question_text}</div>}
       <div style={q}><b>AI answer:</b></div>
       <Md text={it.answer_text} />
       {it.comment && <div style={q}><b>Agent note:</b> {it.comment}</div>}
@@ -133,8 +140,12 @@ function ReviewDetail({ it, onActed }) {
 // ---- collapsed row: click anywhere on the summary to expand ----
 function ReviewRow({ it, open, onToggle, onActed }) {
   const up = it.vote === 'up';
+  // Lead with the deal title when feedback is tied to a deal; otherwise fall back to the Q/A excerpt.
+  const title = it.deal_title || it.title || '';
   const head = excerpt(it.question_text || it.answer_text);
+  const lead = title || head;
   const meta = { fontSize: 11, color: C.sub, flexShrink: 0, whiteSpace: 'nowrap' };
+  const lineClamp = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
   return (
     <div style={{ border: `1px solid ${open ? C.blue : C.border}`, borderRadius: 8, marginBottom: 8, overflow: 'hidden', background: '#fff' }}>
       <div
@@ -148,8 +159,13 @@ function ReviewRow({ it, open, onToggle, onActed }) {
         <span title={up ? 'up-vote' : 'down-vote'} style={{ fontWeight: 700, padding: '2px 7px', borderRadius: 10, fontSize: 11, flexShrink: 0, background: up ? '#eaf6ec' : '#fdeaec', color: up ? C.ok : C.no }}>
           {up ? '▲' : '▼'}
         </span>
-        <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: head ? C.text : C.sub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {head || '(no text)'}
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: 'block', fontSize: 13, fontWeight: title ? 600 : 400, color: lead ? C.text : C.sub, ...lineClamp }}>
+            {lead || '(no text)'}
+          </span>
+          {title && head && (
+            <span style={{ display: 'block', fontSize: 11, color: C.sub, ...lineClamp }}>{head}</span>
+          )}
         </span>
         {it.reason_code && <span style={{ ...tag, flexShrink: 0 }}>{it.reason_code}</span>}
         <span style={meta}>{it.agent_id}</span>
