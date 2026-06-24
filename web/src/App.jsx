@@ -145,6 +145,51 @@ function hydrateProfile(p) {
   return out;
 }
 
+// A single gap-elicitation control. Renders by input_type and writes the chosen
+// value back through onFill (which feeds the form's set()/profile sync). Holds its
+// own draft state for text/number so typing doesn't churn parent state.
+function NeedInput({ need, onFill }) {
+  const [val, setVal] = React.useState('');
+  const type = need.input_type || 'text';
+  const wrap = { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' };
+  const lbl = { fontSize: 12, color: C.text, fontWeight: 600 };
+  const ctl = { fontSize: 12, padding: '5px 8px', border: `1px solid ${C.border}`, borderRadius: 6, background: '#fff', color: C.text };
+
+  if (type === 'boolean') {
+    return (
+      <div style={wrap}>
+        <span style={lbl} title={need.why || ''}>{need.label}</span>
+        <button onClick={() => onFill(need.field, 'yes')} style={{ ...ctl, cursor: 'pointer' }}>Yes</button>
+        <button onClick={() => onFill(need.field, 'no')} style={{ ...ctl, cursor: 'pointer' }}>No</button>
+      </div>
+    );
+  }
+  if (type === 'select') {
+    return (
+      <div style={wrap}>
+        <span style={lbl} title={need.why || ''}>{need.label}</span>
+        <select value="" onChange={(e) => { if (e.target.value) onFill(need.field, e.target.value); }} style={ctl}>
+          <option value="">Select…</option>
+          {(need.options || []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      </div>
+    );
+  }
+  const submit = () => { const v = val.trim(); if (v) onFill(need.field, v); };
+  return (
+    <div style={wrap}>
+      <span style={lbl} title={need.why || ''}>{need.label}</span>
+      <input type={type === 'number' ? 'number' : 'text'} value={val}
+        onChange={(e) => setVal(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }}
+        style={{ ...ctl, width: type === 'number' ? 110 : 170 }} />
+      <button onClick={submit} disabled={!val.trim()}
+        style={{ fontSize: 12, padding: '5px 10px', borderRadius: 6, border: 'none',
+          cursor: val.trim() ? 'pointer' : 'default', background: val.trim() ? C.blue : C.border, color: '#fff' }}>Add</button>
+    </div>
+  );
+}
+
 const DEAL_STATUS = {
   draft:     { bg: '#eef2f9', fg: '#5b6473' },
   submitted: { bg: '#fdf6e3', fg: '#b8860b' },
@@ -235,6 +280,8 @@ export default function App({ user, onLogout }) {
   const [fbReason, setFbReason] = React.useState('');
   const [fbFix, setFbFix] = React.useState('');
   const REASONS = ['wrong_product', 'missing_regulation', 'factual_error', 'outdated', 'tone', 'other'];
+  const [needs, setNeeds] = React.useState([]);   // gap-elicitation prompts from chat.php
+  const [hold, setHold] = React.useState(false);  // required gaps remain -> recommendation withheld
 
   React.useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -250,9 +297,14 @@ export default function App({ user, onLogout }) {
     setSending(true);
     try {
       const known = profileTouched ? cleanProfile(profile) : null;
-      const data = await apiPost('chat.php', { message: text, conversation_id: convId, profile: known });
+      const data = await apiPost('chat.php', {
+        message: text, conversation_id: convId, profile: known,
+        deal_id: dealId || undefined,
+      });
       setConvId(data.conversation_id);
       setMessages((m) => [...m, { role: 'assistant', content: data.reply }]);
+      setNeeds(Array.isArray(data.needs) ? data.needs : []);
+      setHold(!!data.hold);
       if (speakOn) speak(data.reply);
     } catch (e) {
       setError(e.message);
@@ -264,7 +316,7 @@ export default function App({ user, onLogout }) {
     if (listening) stopListening();
     window.speechSynthesis?.cancel();
     setMessages([]); setConvId(null); setInput(''); setError(null);
-    setFb({}); setDownIdx(null);
+    setFb({}); setDownIdx(null); setNeeds([]); setHold(false);
     setPullNote(''); setFilledKeys(new Set()); autoPulledRef.current = null;
     setDealId(null); setClientName(''); setDealTitle(''); setDealStatus('draft'); setDealSheet(''); setView('chat'); setDealMsg('');
   }
@@ -286,6 +338,14 @@ export default function App({ user, onLogout }) {
       setError(e.message);
       setFb((f) => ({ ...f, [idx]: undefined }));
     }
+  }
+
+  // Answer a gap chip: write into the fact-find (via set, which marks the profile
+  // touched so the next turn re-sends it), then drop the chip. The server recomputes
+  // remaining gaps on the next message.
+  function fillNeed(field, value) {
+    set(field, value);
+    setNeeds((ns) => ns.filter((n) => n.field !== field));
   }
 
   // ================= RECOMMEND (form) =================
@@ -732,6 +792,22 @@ export default function App({ user, onLogout }) {
 
           {error && <div style={{ background: '#fde8e8', color: C.no, padding: 10, margin: '0 16px', borderRadius: 6, fontSize: 13 }}>{error}</div>}
           {voiceErr && <div style={{ color: C.no, fontSize: 12, padding: '0 16px' }}>{voiceErr}</div>}
+
+          {needs.length > 0 && (
+            <div style={{ margin: '0 16px 10px', border: `1px solid ${hold ? '#fcd9a8' : C.border}`, borderRadius: 10, background: hold ? '#fff7ed' : '#f3f7ff', padding: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: hold ? '#b45309' : C.blue, marginBottom: 8 }}>
+                {hold ? 'A few details needed before recommending a product' : 'Optional — would sharpen the plan'}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {needs.slice(0, 4).map((n) => (
+                  <NeedInput key={n.field} need={n} onFill={fillNeed} />
+                ))}
+              </div>
+              <div style={{ fontSize: 10, color: C.sub, marginTop: 8, lineHeight: 1.4 }}>
+                Tap to fill, or just answer in chat — either way updates the client profile.
+              </div>
+            </div>
+          )}
 
           <div style={{ borderTop: `1px solid ${C.border}`, background: C.card, padding: 12 }}>
             <div style={{ position: 'relative' }}>

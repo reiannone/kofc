@@ -17,6 +17,7 @@ require __DIR__ . '/config.php';
 require __DIR__ . '/ai.php';
 require __DIR__ . '/kb.php';
 require __DIR__ . '/prompts.php';
+require __DIR__ . '/product-gates.php';
 
 kofc_cors();
 
@@ -70,6 +71,27 @@ try {
         $messages[] = ['role' => 'system', 'content' => $known];
     }
 
+    // ---- Interactive gap elicitation (deal context only) ----
+    // Active when the client signals a deal: a chosen `product` category, or a `deal`
+    // flag / deal_id. Outside a deal, behavior is unchanged. Before a product is set,
+    // the shared core drives the questions that narrow the deal toward one.
+    $profileForGaps = (is_array($body) && isset($body['profile']) && is_array($body['profile'])) ? $body['profile'] : [];
+    $product   = is_array($body) && isset($body['product']) ? (string)$body['product'] : '';
+    $inDeal    = $product !== ''
+              || (is_array($body) && !empty($body['deal']))
+              || (is_array($body) && isset($body['deal_id']) && (int)$body['deal_id'] > 0);
+    $gaps = null;
+    if ($inDeal) {
+        $gaps = kofc_product_gaps($product !== '' ? $product : null, $profileForGaps);
+        $brief = kofc_gaps_prompt_brief($gaps);
+        if ($brief !== '') {
+            $messages[] = ['role' => 'system', 'content' => $brief];
+        }
+        if (!empty($gaps['unknown_keys'])) {
+            error_log('chat.php gap guard: unknown field_keys dropped: ' . implode(',', $gaps['unknown_keys']));
+        }
+    }
+
     foreach ($history as $row) {
         $messages[] = ['role' => $row['role'], 'content' => $row['content']];
     }
@@ -90,6 +112,9 @@ try {
         'conversation_id'       => $convId,
         'reply'                 => $reply,
         'requires_agent_review' => true,
+        'needs'                 => $gaps['needs'] ?? [],
+        'hold'                  => $gaps['hold'] ?? false,
+        'gap_mode'              => $gaps['mode'] ?? null,
         'disclaimer'            => 'AI planning support for KofC field-agent use. Not a suitability '
                                  . 'determination; the licensed agent owns the final plan and all client contact.',
     ]);
