@@ -14,6 +14,7 @@ export default function KnowledgeAdmin() {
   const [openSource, setOpenSource] = React.useState(null); // expanded document
   const [chunks, setChunks] = React.useState(null);         // chunks for the open doc
   const [chunksErr, setChunksErr] = React.useState(null);
+  const [listFilter, setListFilter] = React.useState('all'); // filter the ingested list by category
 
   const load = React.useCallback(() => {
     apiGet('kb-list.php')
@@ -107,6 +108,24 @@ export default function KnowledgeAdmin() {
 
       <div style={cardStyle}>
         <h2 style={h2Style}>Ingested documents</h2>
+        {docs && docs.length > 0 && (() => {
+          const present = Array.from(new Set(docs.map((d) => d.collection)));
+          const chips = [['all', 'All']].concat(present.map((c) => [c, labels[c] || c]));
+          const countFor = (key) => key === 'all' ? docs.length : docs.filter((d) => d.collection === key).length;
+          return (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+              {chips.map(([key, lab]) => (
+                <button key={key} onClick={() => setListFilter(key)}
+                  style={{ fontSize: 12, fontWeight: 600, padding: '5px 12px', borderRadius: 16, cursor: 'pointer',
+                    border: listFilter === key ? `1px solid ${C.blue}` : `1px solid ${C.border}`,
+                    background: listFilter === key ? C.blue : '#fff',
+                    color: listFilter === key ? '#fff' : C.sub }}>
+                  {lab} ({countFor(key)})
+                </button>
+              ))}
+            </div>
+          );
+        })()}
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead><tr><th style={th}>Document</th><th style={th}>Category</th><th style={th}>Chunks</th><th style={th}></th></tr></thead>
           <tbody>
@@ -114,7 +133,9 @@ export default function KnowledgeAdmin() {
               <tr><td style={{ ...td, color: C.sub }} colSpan={4}>Loading…</td></tr>
             ) : docs.length === 0 ? (
               <tr><td style={{ ...td, color: C.sub }} colSpan={4}>Nothing ingested yet.</td></tr>
-            ) : docs.map((d) => (
+            ) : docs.filter((d) => listFilter === 'all' || d.collection === listFilter).length === 0 ? (
+              <tr><td style={{ ...td, color: C.sub }} colSpan={4}>No documents in this category.</td></tr>
+            ) : docs.filter((d) => listFilter === 'all' || d.collection === listFilter).map((d) => (
               <React.Fragment key={d.source}>
                 <tr style={{ cursor: 'pointer', background: openSource === d.source ? '#f7f9fc' : 'transparent' }}>
                   <td style={td} onClick={() => toggleDoc(d.source)}>
