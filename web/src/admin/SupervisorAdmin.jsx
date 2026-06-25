@@ -12,6 +12,26 @@ const TABS = [
   { s: 'all', label: 'All' },
 ];
 
+function SourceFooter({ sources }) {
+  if (!Array.isArray(sources) || sources.length === 0) return null;
+  const LABELS = { regulations: 'Regulations', policy: 'Policy', training: 'Training', sales: 'Sales', vetted: 'Vetted' };
+  const byCol = {};
+  for (const s of sources) {
+    const c = s.collection || 'policy';
+    (byCol[c] = byCol[c] || []).push(s.source);
+  }
+  const order = ['regulations', 'policy', 'training', 'sales'];
+  const cols = Object.keys(byCol).sort((a, b) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99));
+  return (
+    <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid #e5e7eb', fontSize: 11, color: '#6b7280', lineHeight: 1.6 }}>
+      <span style={{ fontWeight: 600 }}>Grounded in KofC materials</span>
+      {cols.map((c) => (
+        <span key={c}> · <span style={{ fontWeight: 600 }}>{LABELS[c] || c}:</span> {byCol[c].join(', ')}</span>
+      ))}
+    </div>
+  );
+}
+
 function Redline({ oldText, newText }) {
   const parts = React.useMemo(() => diffWords(oldText || '', newText || ''), [oldText, newText]);
   return (

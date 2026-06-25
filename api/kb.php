@@ -101,6 +101,44 @@ function kofc_cosine(array $a, array $b): float
 }
 
 /**
+ * Per-response provenance capture for citation footers.
+ * kofc_kb_context() stashes the source documents it actually selected here (deduped,
+ * authority-ordered, 'vetted' excluded — those are promoted prior answers, not source
+ * documents). The getter returns them so chat.php / deal-sheet.php can cite per response.
+ * Stays empty until real policy/training/sales/regulations docs are ingested.
+ */
+function kofc_kb_set_last_sources(array $sources): void
+{
+    $GLOBALS['__kofc_kb_last_sources'] = $sources;
+}
+function kofc_kb_last_sources(): array
+{
+    return $GLOBALS['__kofc_kb_last_sources'] ?? [];
+}
+
+/**
+ * Reduce the selected chunk set to distinct citable source documents.
+ * Dedup by (collection, source); drop 'vetted'; order by collections.php authority_order.
+ */
+function kofc_kb_sources_from_chosen(array $chosen, array $meta): array
+{
+    $order = array_flip($meta['authority_order'] ?? []);
+    $seen = [];
+    $sources = [];
+    foreach ($chosen as $h) {
+        $col = (string)($h['collection'] ?? '');
+        $src = (string)($h['source'] ?? '');
+        if ($col === '' || $col === 'vetted' || $src === '') continue; // vetted is not a citable source doc
+        $key = $col . '|' . $src;
+        if (isset($seen[$key])) continue;
+        $seen[$key] = true;
+        $sources[] = ['source' => $src, 'collection' => $col];
+    }
+    usort($sources, fn($a, $b) => ($order[$a['collection']] ?? 99) <=> ($order[$b['collection']] ?? 99));
+    return $sources;
+}
+
+/**
  * Prompt-ready retrieval block: weighted, floored, budgeted, authority-ordered.
  * Returns '' safely when mocked, empty, or on any error.
  *
@@ -110,6 +148,7 @@ function kofc_cosine(array $a, array $b): float
  */
 function kofc_kb_context(string $query, int $k = 0, ?array $tuning = null): string
 {
+    kofc_kb_set_last_sources([]); // reset per-call provenance
     if (AI_MOCK) return '';
     $meta   = require __DIR__ . '/collections.php';
     $tuning = is_array($tuning) ? $tuning : [];
@@ -183,6 +222,9 @@ function kofc_kb_context(string $query, int $k = 0, ?array $tuning = null): stri
         $take($i, $h);
     }
     if (!$chosen) return '';
+
+    // Capture per-response provenance (deduped, vetted excluded) for citation footers.
+    kofc_kb_set_last_sources(kofc_kb_sources_from_chosen($chosen, $meta));
 
     // 3) Present grouped by AUTHORITY ORDER, labeled, with the preamble.
     $bySel = [];

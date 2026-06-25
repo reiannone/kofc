@@ -149,6 +149,26 @@ function hydrateProfile(p) {
 // A single gap-elicitation control. Renders by input_type and writes the chosen
 // value back through onFill (which feeds the form's set()/profile sync). Holds its
 // own draft state for text/number so typing doesn't churn parent state.
+function SourceFooter({ sources }) {
+  if (!Array.isArray(sources) || sources.length === 0) return null;
+  const LABELS = { regulations: 'Regulations', policy: 'Policy', training: 'Training', sales: 'Sales', vetted: 'Vetted' };
+  const byCol = {};
+  for (const s of sources) {
+    const c = s.collection || 'policy';
+    (byCol[c] = byCol[c] || []).push(s.source);
+  }
+  const order = ['regulations', 'policy', 'training', 'sales'];
+  const cols = Object.keys(byCol).sort((a, b) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99));
+  return (
+    <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid #e5e7eb', fontSize: 11, color: '#6b7280', lineHeight: 1.6 }}>
+      <span style={{ fontWeight: 600 }}>Grounded in KofC materials</span>
+      {cols.map((c) => (
+        <span key={c}> · <span style={{ fontWeight: 600 }}>{LABELS[c] || c}:</span> {byCol[c].join(', ')}</span>
+      ))}
+    </div>
+  );
+}
+
 function Redline({ oldText, newText }) {
   const parts = React.useMemo(() => diffWords(oldText || '', newText || ''), [oldText, newText]);
   return (
@@ -321,7 +341,7 @@ export default function App({ user, onLogout }) {
         deal_id: dealIdRef.current || undefined,
       });
       setConvId(data.conversation_id);
-      setMessages((m) => [...m, { role: 'assistant', content: data.reply }]);
+      setMessages((m) => [...m, { role: 'assistant', content: data.reply, sources: Array.isArray(data.sources) ? data.sources : [] }]);
       setNeeds(Array.isArray(data.needs) ? data.needs : []);
       setHold(!!data.hold);
       if (speakOn) speak(data.reply);
@@ -359,7 +379,7 @@ export default function App({ user, onLogout }) {
     setMessages([]); setConvId(null); setInput(''); setError(null);
     setFb({}); setDownIdx(null); setNeeds([]); setHold(false); setPendingFills([]);
     setPullNote(''); setFilledKeys(new Set()); autoPulledRef.current = null;
-    setDealId(null); dealIdRef.current = null; setClientName(''); setDealTitle(''); setDealStatus('draft'); setReviewState('none'); setSharedDraft(false); setVersions(null); setDealSheet(''); setView('chat'); setDealMsg('');
+    setDealId(null); dealIdRef.current = null; setClientName(''); setDealTitle(''); setDealStatus('draft'); setReviewState('none'); setSharedDraft(false); setVersions(null); setSheetSources([]); setDealSheet(''); setView('chat'); setDealMsg('');
   }
 
   async function sendFeedback(idx, vote, reason, fix) {
@@ -533,6 +553,7 @@ export default function App({ user, onLogout }) {
   const [view, setView] = React.useState('chat'); // 'chat' | 'deals' | 'sheet'
   const [dealSheet, setDealSheet] = React.useState('');
   const [sheetLoading, setSheetLoading] = React.useState(false);
+  const [sheetSources, setSheetSources] = React.useState([]); // citation provenance for the generated sheet
   const [dealMsg, setDealMsg] = React.useState('');
   const [dealBusy, setDealBusy] = React.useState(false);
 
@@ -623,6 +644,7 @@ export default function App({ user, onLogout }) {
     try {
       const data = await apiPost('deal-sheet.php', { deal_id: dealId, conversation_id: convId, profile: cleanProfile(profile) || {} });
       setDealSheet(data.deal_sheet || '');
+      setSheetSources(Array.isArray(data.sources) ? data.sources : []);
     } catch (e) { setDealMsg(e.message); }
     finally { setSheetLoading(false); }
   }
@@ -750,6 +772,7 @@ export default function App({ user, onLogout }) {
               style={{ ...inputStyle, minHeight: 360, resize: 'vertical', fontFamily: 'ui-monospace, Menlo, Consolas, monospace', fontSize: 12, lineHeight: 1.5 }} />
             <div style={{ border: `1px solid ${C.border}`, borderRadius: 6, padding: 12, background: '#fff', overflow: 'auto', minHeight: 360 }}>
               {dealSheet.trim() ? <Md text={dealSheet} /> : <span style={{ color: C.sub, fontSize: 12 }}>Preview appears here.</span>}
+              {dealSheet.trim() && <SourceFooter sources={sheetSources} />}
             </div>
           </div>
         )}
@@ -869,6 +892,7 @@ export default function App({ user, onLogout }) {
                   borderBottomLeftRadius: m.role === 'user' ? 12 : 2,
                 }}>
                   {m.role === 'assistant' ? <Md text={m.content} /> : m.content}
+                  {m.role === 'assistant' && <SourceFooter sources={m.sources} />}
                   {m.role === 'assistant' && (
                     <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
                       <button onClick={() => speak(m.content)} title="Read aloud"

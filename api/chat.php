@@ -141,6 +141,9 @@ try {
         'hold'                  => $gaps['hold'] ?? false,
         'gap_mode'              => $gaps['mode'] ?? null,
         'gap_category'          => $detect['category'] ?? null,
+        // Per-response citation: KofC source documents the reply was grounded in
+        // (empty while gathering/held, or until real source docs are ingested).
+        'sources'               => $held ? [] : kofc_kb_last_sources(),
         'disclaimer'            => 'AI planning support for KofC field-agent use. Not a suitability '
                                  . 'determination; the licensed agent owns the final plan and all client contact.',
     ]);

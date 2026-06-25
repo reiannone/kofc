@@ -57,7 +57,11 @@ try {
     $kb = require __DIR__ . '/products.php';
     $sheet = AI_MOCK ? kofc_mock_sheet($profile) : kofc_generate_sheet($transcript, $profile, $kb);
 
-    echo json_encode(['deal_sheet' => $sheet]);
+    // Per-response citation: KofC source documents the sheet was grounded in
+    // (empty in mock mode, or until real source docs are ingested).
+    $sources = AI_MOCK ? [] : kofc_kb_last_sources();
+
+    echo json_encode(['deal_sheet' => $sheet, 'sources' => $sources]);
 } catch (Throwable $e) {
     error_log('deal-sheet.php: ' . $e->getMessage());
     http_response_code(500); echo json_encode(['error' => 'internal error']);
