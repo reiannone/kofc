@@ -400,6 +400,13 @@ function DealReviewRow({ it, open, onToggle, onActed }) {
           {it.title || it.client_name || '(untitled deal)'}
         </span>
         <span style={{ fontSize: 11, color: C.sub, flexShrink: 0 }}>{it.agent_id}</span>
+        {it.review_state === 'redlined' && (
+          <span title={it.redlined_by ? `Redlined by ${it.redlined_by}` : 'Redlined'}
+            style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: '#fff7ed', color: '#b45309', flexShrink: 0 }}>Redlined</span>
+        )}
+        {it.review_state === 'accepted' && (
+          <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: '#eaf6ec', color: C.ok, flexShrink: 0 }}>Accepted</span>
+        )}
         <span style={dpill(it.status)}>{it.status}</span>
         <span style={{ fontSize: 11, color: C.sub, flexShrink: 0 }}>{(it.updated_at || '').replace('T', ' ').slice(0, 16)}</span>
       </div>

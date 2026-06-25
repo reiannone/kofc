@@ -38,7 +38,7 @@ try {
     $status = $_GET['status'] ?? 'submitted';
     $valid  = ['submitted', 'approved', 'returned'];
     $pdo    = kofc_db();
-    $cols   = 'id, agent_id, title, client_name, status, updated_at, reviewed_by, reviewed_at';
+    $cols   = 'id, agent_id, title, client_name, status, review_state, redlined_by, redlined_at, updated_at, reviewed_by, reviewed_at';
     if (in_array($status, $valid, true)) {
         $st = $pdo->prepare("SELECT $cols FROM deals WHERE status = :s ORDER BY updated_at DESC");
         $st->execute([':s' => $status]);

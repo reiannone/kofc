@@ -50,7 +50,9 @@ try {
         }
         if ($convId !== false)    { $sets[] = 'conversation_id = :cv'; $params[':cv'] = $convId; }
         if ($profile !== false)   { $sets[] = 'profile_json = :pj';    $params[':pj'] = $profile; }
-        if ($sheet !== false)     { $sets[] = 'deal_sheet = :ds';      $params[':ds'] = $sheet; }
+        if ($sheet !== false)     { $sets[] = 'deal_sheet = :ds';      $params[':ds'] = $sheet;
+                                    // an agent revision supersedes a supervisor redline
+                                    $sets[] = 'review_state = "none"'; }
         if ($sets) {
             $pdo->prepare('UPDATE deals SET ' . implode(', ', $sets) . ', updated_at = NOW() WHERE id = :id')
                 ->execute($params);

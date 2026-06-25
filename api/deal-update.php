@@ -37,9 +37,9 @@ try {
         // Preserve the agent's original as the baseline before the first supervisor edit.
         kofc_ensure_agent_baseline($pdo, $id, $deal['deal_sheet'] ?? null, $deal['agent_id'] ?? null);
 
-        // Write the supervisor's edit to the live sheet.
-        $pdo->prepare('UPDATE deals SET deal_sheet = :ds, updated_at = NOW() WHERE id = :id')
-            ->execute([':ds' => $newSheet, ':id' => $id]);
+        // Write the supervisor's edit to the live sheet and mark it redlined.
+        $pdo->prepare('UPDATE deals SET deal_sheet = :ds, review_state = "redlined", redlined_by = :rb, redlined_at = NOW(), updated_at = NOW() WHERE id = :id')
+            ->execute([':ds' => $newSheet, ':rb' => $me, ':id' => $id]);
 
         // Append the supervisor version (no-op if identical to the baseline we just made).
         $version = kofc_snapshot_deal_sheet($pdo, $id, $newSheet, $me, 'supervisor');

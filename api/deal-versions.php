@@ -13,11 +13,19 @@ require __DIR__ . '/deal-versions-lib.php';
 kofc_cors();
 
 try {
-    kofc_require_agent();
-    if (!kofc_is_supervisor()) { http_response_code(403); echo json_encode(['error' => 'supervisor only']); exit; }
+    $agentId = kofc_require_agent();
 
     $dealId = isset($_GET['deal_id']) ? (int)$_GET['deal_id'] : 0;
     if ($dealId <= 0) { http_response_code(422); echo json_encode(['error' => 'deal_id required']); exit; }
+
+    // Owner agent or supervisor may read a deal's version history.
+    $own = kofc_db()->prepare('SELECT agent_id FROM deals WHERE id = :id');
+    $own->execute([':id' => $dealId]);
+    $d = $own->fetch();
+    if (!$d) { http_response_code(404); echo json_encode(['error' => 'deal not found']); exit; }
+    if ($d['agent_id'] !== $agentId && !kofc_is_supervisor()) {
+        http_response_code(403); echo json_encode(['error' => 'forbidden']); exit;
+    }
 
     $st = kofc_db()->prepare(
         'SELECT id, version_no, source, edited_by, created_at, deal_sheet

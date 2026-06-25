@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { diffWords } from 'diff';
 import { apiGet, apiPost } from './api.js';
 
 // Strip Markdown syntax so text-to-speech doesn't read "asterisk asterisk".
@@ -148,6 +149,19 @@ function hydrateProfile(p) {
 // A single gap-elicitation control. Renders by input_type and writes the chosen
 // value back through onFill (which feeds the form's set()/profile sync). Holds its
 // own draft state for text/number so typing doesn't churn parent state.
+function Redline({ oldText, newText }) {
+  const parts = React.useMemo(() => diffWords(oldText || '', newText || ''), [oldText, newText]);
+  return (
+    <div style={{ fontSize: 13, lineHeight: 1.7, whiteSpace: 'pre-wrap', fontFamily: 'ui-monospace, Menlo, Consolas, monospace', border: `1px solid ${C.border}`, borderRadius: 6, padding: 12, background: '#fff', maxHeight: 280, overflow: 'auto' }}>
+      {parts.map((p, i) => {
+        if (p.added) return <span key={i} style={{ background: '#e6f4ea', color: '#1e7e34', textDecoration: 'underline' }}>{p.value}</span>;
+        if (p.removed) return <span key={i} style={{ background: '#fdeaec', color: '#b02a37', textDecoration: 'line-through' }}>{p.value}</span>;
+        return <span key={i}>{p.value}</span>;
+      })}
+    </div>
+  );
+}
+
 function NeedInput({ need, onFill }) {
   const [val, setVal] = React.useState('');
   const type = need.input_type || 'text';
@@ -345,7 +359,7 @@ export default function App({ user, onLogout }) {
     setMessages([]); setConvId(null); setInput(''); setError(null);
     setFb({}); setDownIdx(null); setNeeds([]); setHold(false); setPendingFills([]);
     setPullNote(''); setFilledKeys(new Set()); autoPulledRef.current = null;
-    setDealId(null); dealIdRef.current = null; setClientName(''); setDealTitle(''); setDealStatus('draft'); setDealSheet(''); setView('chat'); setDealMsg('');
+    setDealId(null); dealIdRef.current = null; setClientName(''); setDealTitle(''); setDealStatus('draft'); setReviewState('none'); setVersions(null); setDealSheet(''); setView('chat'); setDealMsg('');
   }
 
   async function sendFeedback(idx, vote, reason, fix) {
@@ -512,6 +526,8 @@ export default function App({ user, onLogout }) {
   const [clientName, setClientName] = React.useState('');
   const [dealTitle, setDealTitle] = React.useState('');
   const [dealStatus, setDealStatus] = React.useState('draft');
+  const [reviewState, setReviewState] = React.useState('none'); // none | redlined | accepted
+  const [versions, setVersions] = React.useState(null);          // sheet history (for redline diff)
   const [deals, setDeals] = React.useState(null);
   const [view, setView] = React.useState('chat'); // 'chat' | 'deals' | 'sheet'
   const [dealSheet, setDealSheet] = React.useState('');
@@ -556,7 +572,12 @@ export default function App({ user, onLogout }) {
       setClientName(deal.client_name || '');
       setDealTitle(deal.title || '');
       setDealStatus(deal.status || 'draft');
+      setReviewState(deal.review_state || 'none');
       setDealSheet(deal.deal_sheet || '');
+      if ((deal.review_state || 'none') === 'redlined') {
+        try { const v = await apiGet(`deal-versions.php?deal_id=${deal.id || id}`); setVersions(v.items || []); }
+        catch { setVersions([]); }
+      } else { setVersions(null); }
       setConvId(deal.conversation_id || null);
       setMessages((d.messages || []).map((m) => ({ role: m.role, content: m.content })));
       const p = deal.profile || (deal.profile_json ? JSON.parse(deal.profile_json) : null);
@@ -565,6 +586,15 @@ export default function App({ user, onLogout }) {
       setFilledKeys(new Set()); setPullNote(''); autoPulledRef.current = null;
       setView('chat');
     } catch (e) { setDealMsg(e.message); }
+  }
+  async function acceptRedline() {
+    setDealBusy(true); setDealMsg('');
+    try {
+      await apiPost('deal-accept.php', { id: dealId });
+      setReviewState('accepted'); setDealStatus('submitted');
+      setDealMsg('Accepted your supervisor’s changes and re-submitted.');
+    } catch (e) { setDealMsg(e.message); }
+    finally { setDealBusy(false); }
   }
   async function submitDeal() {
     setDealBusy(true); setDealMsg('Submitting…');
@@ -617,6 +647,15 @@ export default function App({ user, onLogout }) {
           <Send size={13} /> Submit
         </button>
         {dealId && <span style={pill(dealStatus)}>{dealStatus}</span>}
+        {reviewState === 'redlined' && (
+          <>
+            <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: '#fff7ed', color: '#b45309' }}>Redlined</span>
+            <button onClick={() => setView('sheet')} style={{ ...dealBtn, borderColor: '#b45309', color: '#b45309' }} title="Your supervisor edited this deal sheet — review the changes">Review edits</button>
+          </>
+        )}
+        {reviewState === 'accepted' && (
+          <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: '#eaf6ec', color: C.ok }}>Accepted</span>
+        )}
         {dealMsg && <span style={{ fontSize: 11, color: C.sub }}>{dealMsg}</span>}
       </div>
     );
@@ -639,6 +678,8 @@ export default function App({ user, onLogout }) {
                   {d.title || d.client_name || '(untitled deal)'}
                 </span>
                 {Number(d.has_sheet) ? <FileText size={13} color={C.sub} /> : null}
+                {d.review_state === 'redlined' && <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: '#fff7ed', color: '#b45309', flexShrink: 0 }}>Redlined</span>}
+                {d.review_state === 'accepted' && <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: '#eaf6ec', color: C.ok, flexShrink: 0 }}>Accepted</span>}
                 <span style={pill(d.status)}>{d.status}</span>
                 <span style={{ fontSize: 11, color: C.sub, flexShrink: 0 }}>{(d.updated_at || '').replace('T', ' ').slice(0, 16)}</span>
               </div>
@@ -658,6 +699,29 @@ export default function App({ user, onLogout }) {
           <button onClick={saveSheet} disabled={dealBusy || !dealSheet} style={dealBtn}><Save size={13} /> Save</button>
           <button onClick={() => setView('chat')} style={dealBtn}><ArrowLeft size={13} /> Back</button>
         </div>
+        {reviewState === 'redlined' && (
+          <div style={{ border: '1px solid #fcd9a8', background: '#fff7ed', borderRadius: 10, padding: 12, marginBottom: 14 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#b45309', marginBottom: 6 }}>Your supervisor edited this deal sheet</div>
+            <div style={{ fontSize: 12, color: C.sub, marginBottom: 10 }}>
+              Review the changes below, then accept them as-is — or edit the sheet yourself and re-submit.
+            </div>
+            {versions && versions.length >= 2
+              ? <Redline oldText={versions[0].deal_sheet || ''} newText={versions[versions.length - 1].deal_sheet || ''} />
+              : <div style={{ fontSize: 12, color: C.sub }}>Loading changes…</div>}
+            <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+              <button onClick={acceptRedline} disabled={dealBusy}
+                style={{ ...dealBtn, borderColor: C.ok, color: '#fff', background: C.ok }}>
+                {dealBusy ? <Loader2 size={13} className="spin" /> : <CheckCircle2 size={13} />} Accept changes
+              </button>
+              <button onClick={() => setReviewState('revising')} style={dealBtn}>
+                Revise instead
+              </button>
+            </div>
+            <div style={{ fontSize: 10, color: C.sub, marginTop: 8 }}>
+              Accepting re-submits the deal with your supervisor’s version. Revising lets you edit below; saving and submitting sends your own revision.
+            </div>
+          </div>
+        )}
         {sheetLoading ? (
           <div style={{ color: C.sub, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
             <Loader2 size={14} className="spin" /> Writing the deal sheet…
