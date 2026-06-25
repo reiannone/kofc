@@ -293,6 +293,7 @@ function DealReviewRow({ it, open, onToggle, onActed }) {
 
 function DealsReview() {
   const [status, setStatus] = React.useState('submitted');
+  const [agent, setAgent] = React.useState('');
   const [items, setItems] = React.useState(null);
   const [openId, setOpenId] = React.useState(null);
   const [err, setErr] = React.useState(null);
@@ -305,20 +306,31 @@ function DealsReview() {
   }, [status]);
   React.useEffect(() => { load(); }, [load]);
 
+  const agents = React.useMemo(
+    () => Array.from(new Set((items || []).map((i) => i.agent_id).filter(Boolean))).sort(),
+    [items]
+  );
+  const shown = (items || []).filter((it) => !agent || it.agent_id === agent);
+
   return (
     <div style={cardStyle}>
-      <h2 style={h2Style}>Deals for review{items ? ` · ${items.length}` : ''}</h2>
-      <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+      <h2 style={h2Style}>Deals for review{items ? ` · ${shown.length}` : ''}</h2>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
         {DEAL_TABS.map((t) => (
-          <button key={t.s} onClick={() => setStatus(t.s)}
+          <button key={t.s} onClick={() => { setStatus(t.s); setAgent(''); }}
             style={{ background: status === t.s ? C.blue : '#eef2f9', color: status === t.s ? '#fff' : C.sub, border: 'none', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer' }}>
             {t.label}
           </button>
         ))}
+        <select value={agent} onChange={(e) => setAgent(e.target.value)}
+          style={{ marginLeft: 'auto', border: `1px solid ${C.border}`, borderRadius: 6, padding: '6px 10px', fontSize: 12, background: '#fff', color: C.text }}>
+          <option value="">All agents</option>
+          {agents.map((a) => <option key={a} value={a}>{a}</option>)}
+        </select>
       </div>
       {items === null ? <div style={{ color: C.sub }}>Loading…</div>
-        : items.length === 0 ? <div style={{ color: C.sub }}>Nothing here.</div>
-        : items.map((it) => (
+        : shown.length === 0 ? <div style={{ color: C.sub }}>Nothing here.</div>
+        : shown.map((it) => (
             <DealReviewRow key={it.id} it={it} open={openId === it.id}
               onToggle={() => setOpenId((cur) => (cur === it.id ? null : it.id))} onActed={load} />
           ))}
@@ -501,6 +513,7 @@ export default function SupervisorAdmin() {
   const [pane, setPane] = React.useState('feedback');
   const [metrics, setMetrics] = React.useState(null);
   const [status, setStatus] = React.useState('new');
+  const [agent, setAgent] = React.useState('');
   const [items, setItems] = React.useState(null);
   const [openId, setOpenId] = React.useState(null);
   const [err, setErr] = React.useState(null);
@@ -520,6 +533,12 @@ export default function SupervisorAdmin() {
   React.useEffect(() => { loadQueue(); }, [loadQueue]);
 
   function onActed() { loadMetrics(); loadQueue(); }
+
+  const fbAgents = React.useMemo(
+    () => Array.from(new Set((items || []).map((i) => i.agent_id).filter(Boolean))).sort(),
+    [items]
+  );
+  const shownFb = (items || []).filter((it) => !agent || it.agent_id === agent);
 
   const tiles = metrics ? [
     ['Pending review', metrics.pending_review ?? 0],
@@ -570,19 +589,24 @@ export default function SupervisorAdmin() {
 
       <div style={cardStyle}>
         <h2 style={h2Style}>
-          Review queue{items ? ` · ${items.length}` : ''}
+          Review queue{items ? ` · ${shownFb.length}` : ''}
         </h2>
-        <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
           {TABS.map((t) => (
-            <button key={t.s} onClick={() => setStatus(t.s)}
+            <button key={t.s} onClick={() => { setStatus(t.s); setAgent(''); }}
               style={{ background: status === t.s ? C.blue : '#eef2f9', color: status === t.s ? '#fff' : C.sub, border: 'none', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer' }}>
               {t.label}
             </button>
           ))}
+          <select value={agent} onChange={(e) => setAgent(e.target.value)}
+            style={{ marginLeft: 'auto', border: `1px solid ${C.border}`, borderRadius: 6, padding: '6px 10px', fontSize: 12, background: '#fff', color: C.text }}>
+            <option value="">All agents</option>
+            {fbAgents.map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
         </div>
         {items === null ? <div style={{ color: C.sub }}>Loading…</div>
-          : items.length === 0 ? <div style={{ color: C.sub }}>Nothing here.</div>
-          : items.map((it) => (
+          : shownFb.length === 0 ? <div style={{ color: C.sub }}>Nothing here.</div>
+          : shownFb.map((it) => (
               <ReviewRow
                 key={it.id}
                 it={it}
