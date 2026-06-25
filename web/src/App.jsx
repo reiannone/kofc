@@ -322,6 +322,11 @@ export default function App({ user, onLogout }) {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, sending]);
 
+  // Agent lands on their deals list — load it once on mount.
+  React.useEffect(() => {
+    apiGet('deal-list.php').then((d) => setDeals(d.items || [])).catch(() => setDeals([]));
+  }, []);
+
   // Core chat turn. `text` is the message; `profileForSend` overrides the default
   // profile-send logic (used by chip-driven refreshes that must send freshly-filled
   // values without waiting for state to commit).
@@ -550,7 +555,8 @@ export default function App({ user, onLogout }) {
   const [sharedDraft, setSharedDraft] = React.useState(false);   // draft opted into supervisor review
   const [versions, setVersions] = React.useState(null);          // sheet history (for redline diff)
   const [deals, setDeals] = React.useState(null);
-  const [view, setView] = React.useState('chat'); // 'chat' | 'deals' | 'sheet'
+  const [view, setView] = React.useState('deals'); // 'chat' | 'deals' | 'sheet' — agent lands on their deals
+  const [dealFilter, setDealFilter] = React.useState('all'); // all|draft|submitted|returned|approved|redlined
   const [dealSheet, setDealSheet] = React.useState('');
   const [sheetLoading, setSheetLoading] = React.useState(false);
   const [sheetSources, setSheetSources] = React.useState([]); // citation provenance for the generated sheet
@@ -607,11 +613,7 @@ export default function App({ user, onLogout }) {
       if (p) { setProfile({ ...EMPTY, ...hydrateProfile(p) }); setProfileTouched(true); }
       else { setProfile(EMPTY); setProfileTouched(false); }
       setFilledKeys(new Set()); setPullNote(''); autoPulledRef.current = null;
-      // Land on the most useful view. A deal with a sheet but no conversation would otherwise
-      // open into an empty chat (looks blank) — show its sheet instead.
-      const hasSheet = !!(deal.deal_sheet && deal.deal_sheet.trim());
-      const hasConvo = !!deal.conversation_id && (d.messages || []).length > 0;
-      setView(hasSheet && !hasConvo ? 'sheet' : 'chat');
+      setView('chat');
     } catch (e) { setDealMsg(e.message); }
   }
   async function shareDraft() {
@@ -705,15 +707,42 @@ export default function App({ user, onLogout }) {
   }
 
   function renderDealsPanel() {
+    const FILTERS = [
+      ['all', 'All'], ['draft', 'Draft'], ['submitted', 'Submitted'],
+      ['returned', 'Returned'], ['approved', 'Approved'], ['redlined', 'Redlined'],
+    ];
+    const list = Array.isArray(deals) ? deals : [];
+    const counts = list.reduce((acc, d) => {
+      acc.all = (acc.all || 0) + 1;
+      acc[d.status] = (acc[d.status] || 0) + 1;
+      if (d.review_state === 'redlined') acc.redlined = (acc.redlined || 0) + 1;
+      return acc;
+    }, {});
+    const shown = list.filter((d) =>
+      dealFilter === 'all' ? true
+      : dealFilter === 'redlined' ? d.review_state === 'redlined'
+      : d.status === dealFilter);
     return (
       <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
-          <h3 style={{ margin: 0, fontSize: 14, color: C.navy, flex: 1 }}>Deals in the works</h3>
-          <button onClick={() => setView('chat')} style={dealBtn}><ArrowLeft size={13} /> Back to chat</button>
+          <h3 style={{ margin: 0, fontSize: 14, color: C.navy, flex: 1 }}>My deals</h3>
+          <button onClick={newConversation} style={dealBtn} title="Start a new conversation"><Plus size={13} /> New deal</button>
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+          {FILTERS.map(([key, label]) => (
+            <button key={key} onClick={() => setDealFilter(key)}
+              style={{ fontSize: 12, fontWeight: 600, padding: '5px 12px', borderRadius: 16, cursor: 'pointer',
+                border: dealFilter === key ? `1px solid ${C.blue}` : `1px solid ${C.border}`,
+                background: dealFilter === key ? C.blue : '#fff',
+                color: dealFilter === key ? '#fff' : C.sub }}>
+              {label}{counts[key] ? ` (${counts[key]})` : ''}
+            </button>
+          ))}
         </div>
         {deals === null ? <div style={{ color: C.sub, fontSize: 13 }}>Loading…</div>
-          : deals.length === 0 ? <div style={{ color: C.sub, fontSize: 13 }}>No saved deals yet. Use Save to start one.</div>
-          : deals.map((d) => (
+          : list.length === 0 ? <div style={{ color: C.sub, fontSize: 13 }}>No saved deals yet. Start a new deal to begin.</div>
+          : shown.length === 0 ? <div style={{ color: C.sub, fontSize: 13 }}>No {dealFilter} deals.</div>
+          : shown.map((d) => (
               <div key={d.id} onClick={() => openDeal(d.id)} role="button" tabIndex={0}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDeal(d.id); } }}
                 style={{ display: 'flex', alignItems: 'center', gap: 10, border: `1px solid ${C.border}`, borderRadius: 8, padding: '10px 12px', marginBottom: 8, cursor: 'pointer', background: '#fff' }}>
