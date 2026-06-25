@@ -17,3 +17,5 @@ Thumbs.db
 sql/KofC Credentials.txt
 *Credentials*
 *.secret
+
+web/dist/
