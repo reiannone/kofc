@@ -682,47 +682,59 @@ export default function App({ user, onLogout }) {
 
   function renderDealBar() {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: `1px solid ${C.border}`, background: C.card, flexWrap: 'wrap' }}>
-        <input value={dealTitle} onChange={(e) => setDealTitle(e.target.value)} placeholder="Deal title"
-          style={{ ...inputStyle, width: 200, padding: '6px 8px', fontSize: 13 }} title="Names this deal in your list. Left blank, it defaults to the client (or your name) plus the date." />
-        <input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="First name"
-          style={{ ...inputStyle, width: 120, padding: '6px 8px', fontSize: 13 }} />
-        <input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Last name"
-          style={{ ...inputStyle, width: 120, padding: '6px 8px', fontSize: 13 }} />
-        <button onClick={newConversation} style={dealBtn} title="Start a brand-new deal">
-          <Plus size={13} /> New deal
-        </button>
-        <button onClick={clearForm} style={dealBtn} title="Clear the title and name fields">
-          <XCircle size={13} /> Clear
-        </button>
-        <button onClick={saveDeal} disabled={dealBusy} style={dealBtn} title="Save work in progress">
-          {dealBusy ? <Loader2 size={13} className="spin" /> : <Save size={13} />} Save
-        </button>
-        <button onClick={openDealsList} style={dealBtn} title="My deals in the works">
-          <FolderOpen size={13} /> My deals
-        </button>
-        <button onClick={generateSheet} style={dealBtn} title="Generate an AI deal sheet">
-          <FileText size={13} /> Deal sheet
-        </button>
-        <button onClick={submitDeal} disabled={dealBusy} style={{ ...dealBtn, borderColor: C.blue, color: '#fff', background: C.blue }} title="Submit to supervisor for review">
-          <Send size={13} /> Submit
-        </button>
-        {dealId && <span style={pill(dealStatus)}>{dealStatus}</span>}
-        {dealStatus === 'draft' && dealId && (
-          sharedDraft
-            ? <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: '#eef2f9', color: C.blue }}>Shared for review</span>
-            : <button onClick={shareDraft} disabled={dealBusy} style={{ ...dealBtn, borderColor: C.blue, color: C.blue }} title="Let your supervisor review and redline this draft before you submit">Share for review</button>
-        )}
-        {reviewState === 'redlined' && (
-          <>
-            <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: '#fff7ed', color: '#b45309' }}>Redlined</span>
-            <button onClick={() => setView('sheet')} style={{ ...dealBtn, borderColor: '#b45309', color: '#b45309' }} title="Your supervisor edited this deal sheet — review the changes">Review edits</button>
-          </>
-        )}
-        {reviewState === 'accepted' && (
-          <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: '#eaf6ec', color: C.ok }}>Accepted</span>
-        )}
-        {dealMsg && <span style={{ fontSize: 11, color: C.sub }}>{dealMsg}</span>}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', borderBottom: `1px solid ${C.border}`, background: C.card }}>
+        {/* Row 1 — identity: what this deal is */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <input value={dealTitle} onChange={(e) => setDealTitle(e.target.value)} placeholder="Deal title"
+            style={{ ...inputStyle, flex: '1 1 220px', minWidth: 160, padding: '7px 9px', fontSize: 13 }}
+            title="Names this deal in your list. Left blank, it defaults to the client (or your name) plus the date." />
+          <input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="First name"
+            style={{ ...inputStyle, flex: '0 1 150px', minWidth: 110, padding: '7px 9px', fontSize: 13 }} />
+          <input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Last name"
+            style={{ ...inputStyle, flex: '0 1 150px', minWidth: 110, padding: '7px 9px', fontSize: 13 }} />
+        </div>
+
+        {/* Row 2 — actions + status */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <button onClick={newConversation} style={dealBtn} title="Start a brand-new deal">
+            <Plus size={13} /> New deal
+          </button>
+          <button onClick={clearForm} style={dealBtn} title="Clear the title and name fields">
+            <XCircle size={13} /> Clear
+          </button>
+          <button onClick={saveDeal} disabled={dealBusy} style={dealBtn} title="Save work in progress">
+            {dealBusy ? <Loader2 size={13} className="spin" /> : <Save size={13} />} Save
+          </button>
+          <button onClick={openDealsList} style={dealBtn} title="My deals in the works">
+            <FolderOpen size={13} /> My deals
+          </button>
+          <button onClick={generateSheet} style={dealBtn} title="Generate an AI deal sheet">
+            <FileText size={13} /> Deal sheet
+          </button>
+          <button onClick={submitDeal} disabled={dealBusy} style={{ ...dealBtn, borderColor: C.blue, color: '#fff', background: C.blue }} title="Submit to supervisor for review">
+            <Send size={13} /> Submit
+          </button>
+
+          {/* status + contextual state, grouped to the right */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', flexWrap: 'wrap' }}>
+            {dealMsg && <span style={{ fontSize: 11, color: C.sub }}>{dealMsg}</span>}
+            {dealId && <span style={pill(dealStatus)}>{dealStatus}</span>}
+            {dealStatus === 'draft' && dealId && (
+              sharedDraft
+                ? <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: '#eef2f9', color: C.blue }}>Shared for review</span>
+                : <button onClick={shareDraft} disabled={dealBusy} style={{ ...dealBtn, borderColor: C.blue, color: C.blue }} title="Let your supervisor review and redline this draft before you submit">Share for review</button>
+            )}
+            {reviewState === 'redlined' && (
+              <>
+                <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: '#fff7ed', color: '#b45309' }}>Redlined</span>
+                <button onClick={() => setView('sheet')} style={{ ...dealBtn, borderColor: '#b45309', color: '#b45309' }} title="Your supervisor edited this deal sheet — review the changes">Review edits</button>
+              </>
+            )}
+            {reviewState === 'accepted' && (
+              <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: '#eaf6ec', color: C.ok }}>Accepted</span>
+            )}
+          </div>
+        </div>
       </div>
     );
   }
