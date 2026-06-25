@@ -359,7 +359,7 @@ export default function App({ user, onLogout }) {
     setMessages([]); setConvId(null); setInput(''); setError(null);
     setFb({}); setDownIdx(null); setNeeds([]); setHold(false); setPendingFills([]);
     setPullNote(''); setFilledKeys(new Set()); autoPulledRef.current = null;
-    setDealId(null); dealIdRef.current = null; setClientName(''); setDealTitle(''); setDealStatus('draft'); setReviewState('none'); setVersions(null); setDealSheet(''); setView('chat'); setDealMsg('');
+    setDealId(null); dealIdRef.current = null; setClientName(''); setDealTitle(''); setDealStatus('draft'); setReviewState('none'); setSharedDraft(false); setVersions(null); setDealSheet(''); setView('chat'); setDealMsg('');
   }
 
   async function sendFeedback(idx, vote, reason, fix) {
@@ -527,6 +527,7 @@ export default function App({ user, onLogout }) {
   const [dealTitle, setDealTitle] = React.useState('');
   const [dealStatus, setDealStatus] = React.useState('draft');
   const [reviewState, setReviewState] = React.useState('none'); // none | redlined | accepted
+  const [sharedDraft, setSharedDraft] = React.useState(false);   // draft opted into supervisor review
   const [versions, setVersions] = React.useState(null);          // sheet history (for redline diff)
   const [deals, setDeals] = React.useState(null);
   const [view, setView] = React.useState('chat'); // 'chat' | 'deals' | 'sheet'
@@ -573,6 +574,7 @@ export default function App({ user, onLogout }) {
       setDealTitle(deal.title || '');
       setDealStatus(deal.status || 'draft');
       setReviewState(deal.review_state || 'none');
+      setSharedDraft(!!Number(deal.shared_draft));
       setDealSheet(deal.deal_sheet || '');
       if ((deal.review_state || 'none') === 'redlined') {
         try { const v = await apiGet(`deal-versions.php?deal_id=${deal.id || id}`); setVersions(v.items || []); }
@@ -586,6 +588,16 @@ export default function App({ user, onLogout }) {
       setFilledKeys(new Set()); setPullNote(''); autoPulledRef.current = null;
       setView('chat');
     } catch (e) { setDealMsg(e.message); }
+  }
+  async function shareDraft() {
+    if (!dealId) { setDealMsg('Save the deal first.'); return; }
+    setDealBusy(true); setDealMsg('');
+    try {
+      await apiPost('deal-share.php', { id: dealId });
+      setSharedDraft(true);
+      setDealMsg('Shared with your supervisor for review.');
+    } catch (e) { setDealMsg(e.message); }
+    finally { setDealBusy(false); }
   }
   async function acceptRedline() {
     setDealBusy(true); setDealMsg('');
@@ -647,6 +659,11 @@ export default function App({ user, onLogout }) {
           <Send size={13} /> Submit
         </button>
         {dealId && <span style={pill(dealStatus)}>{dealStatus}</span>}
+        {dealStatus === 'draft' && dealId && (
+          sharedDraft
+            ? <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: '#eef2f9', color: C.blue }}>Shared for review</span>
+            : <button onClick={shareDraft} disabled={dealBusy} style={{ ...dealBtn, borderColor: C.blue, color: C.blue }} title="Let your supervisor review and redline this draft before you submit">Share for review</button>
+        )}
         {reviewState === 'redlined' && (
           <>
             <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: '#fff7ed', color: '#b45309' }}>Redlined</span>

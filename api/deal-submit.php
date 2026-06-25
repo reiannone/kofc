@@ -34,7 +34,7 @@ try {
         exit;
     }
 
-    $pdo->prepare('UPDATE deals SET status = "submitted", submit_note = :n, updated_at = NOW() WHERE id = :id')
+    $pdo->prepare('UPDATE deals SET status = "submitted", shared_draft = 0, submit_note = :n, updated_at = NOW() WHERE id = :id')
         ->execute([':n' => $note, ':id' => $id]);
     echo json_encode(['ok' => true, 'status' => 'submitted']);
 } catch (Throwable $e) {

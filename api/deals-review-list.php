@@ -35,15 +35,22 @@ try {
     kofc_require_agent();
     if (!kofc_is_supervisor()) { http_response_code(403); echo json_encode(['error' => 'supervisor only']); exit; }
 
-    $status = $_GET['status'] ?? 'submitted';
-    $valid  = ['submitted', 'approved', 'returned'];
+    $filter = $_GET['status'] ?? 'submitted';
     $pdo    = kofc_db();
-    $cols   = 'id, agent_id, title, client_name, status, review_state, redlined_by, redlined_at, updated_at, reviewed_by, reviewed_at';
-    if (in_array($status, $valid, true)) {
+    $cols   = 'id, agent_id, title, client_name, status, review_state, shared_draft, redlined_by, redlined_at, updated_at, reviewed_by, reviewed_at';
+
+    if ($filter === 'redlined') {
+        // Redlined deals across ALL statuses.
+        $st = $pdo->query("SELECT $cols FROM deals WHERE review_state = 'redlined' ORDER BY updated_at DESC");
+    } elseif ($filter === 'draft') {
+        // Only drafts the agent has shared for review — never private drafts.
+        $st = $pdo->query("SELECT $cols FROM deals WHERE status = 'draft' AND shared_draft = 1 ORDER BY updated_at DESC");
+    } elseif (in_array($filter, ['submitted', 'approved', 'returned'], true)) {
         $st = $pdo->prepare("SELECT $cols FROM deals WHERE status = :s ORDER BY updated_at DESC");
-        $st->execute([':s' => $status]);
+        $st->execute([':s' => $filter]);
     } else {
-        $st = $pdo->query("SELECT $cols FROM deals WHERE status <> 'draft' ORDER BY updated_at DESC");
+        // 'all': everything visible to a supervisor — non-draft, plus shared drafts.
+        $st = $pdo->query("SELECT $cols FROM deals WHERE status <> 'draft' OR shared_draft = 1 ORDER BY updated_at DESC");
     }
     echo json_encode(['items' => $st->fetchAll()]);
 } catch (Throwable $e) {

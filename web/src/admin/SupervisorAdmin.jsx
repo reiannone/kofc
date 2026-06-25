@@ -193,9 +193,11 @@ function ReviewRow({ it, open, onToggle, onActed }) {
 /* ============================ DEALS REVIEW ============================ */
 
 const DEAL_TABS = [
+  { s: 'draft', label: 'Shared drafts' },
   { s: 'submitted', label: 'Submitted' },
-  { s: 'approved', label: 'Approved' },
+  { s: 'redlined', label: 'Redlined' },
   { s: 'returned', label: 'Returned' },
+  { s: 'approved', label: 'Approved' },
   { s: 'all', label: 'All' },
 ];
 const DSTATUS = {
@@ -286,7 +288,23 @@ function DealReviewDetail({ id, onActed }) {
 
   return (
     <div style={{ borderTop: `1px solid ${C.border}`, padding: 14, background: '#fbfcfe' }}>
-      {deal.title && <div style={{ fontSize: 14, fontWeight: 600, color: C.navy, marginBottom: 6 }}>{deal.title}</div>}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
+        {deal.title && <div style={{ fontSize: 15, fontWeight: 700, color: C.navy, flex: 1, minWidth: 0 }}>{deal.title}</div>}
+        {!editing && (
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            <button onClick={() => { setEditText(deal.deal_sheet || ''); setEditing(true); setShowHistory(false); }}
+              style={{ fontSize: 13, fontWeight: 600, padding: '7px 16px', borderRadius: 6, border: 'none', background: C.blue, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+              ✏️ Edit deal sheet
+            </button>
+            {versions && versions.length >= 2 && (
+              <button onClick={() => setShowHistory((s) => !s)}
+                style={{ fontSize: 13, fontWeight: 600, padding: '7px 16px', borderRadius: 6, border: `1px solid ${C.blue}`, background: showHistory ? '#eef2f9' : '#fff', color: C.blue, cursor: 'pointer' }}>
+                {showHistory ? 'Hide changes' : `Show changes (${versions.length})`}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
       <div style={{ fontSize: 12, color: C.sub, marginBottom: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <span>agent: {deal.agent_id}</span>
         {deal.client_name && <span>· client: {deal.client_name}</span>}
@@ -295,22 +313,8 @@ function DealReviewDetail({ id, onActed }) {
       </div>
       {profileBits.length > 0 && <div style={q}><b>Profile:</b> {profileBits.join(' · ')}</div>}
       {deal.submit_note && <div style={q}><b>Agent note:</b> {deal.submit_note}</div>}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '6px 0' }}>
+      <div style={{ margin: '6px 0' }}>
         <b style={{ fontSize: 13 }}>Deal sheet:</b>
-        {!editing && (
-          <>
-            <button onClick={() => { setEditText(deal.deal_sheet || ''); setEditing(true); setShowHistory(false); }}
-              style={{ fontSize: 11, padding: '3px 10px', borderRadius: 6, border: `1px solid ${C.border}`, background: '#fff', color: C.navy, cursor: 'pointer' }}>
-              Edit
-            </button>
-            {versions && versions.length >= 2 && (
-              <button onClick={() => setShowHistory((s) => !s)}
-                style={{ fontSize: 11, padding: '3px 10px', borderRadius: 6, border: `1px solid ${C.border}`, background: showHistory ? '#eef2f9' : '#fff', color: C.navy, cursor: 'pointer' }}>
-                {showHistory ? 'Hide changes' : `Show changes (${versions.length})`}
-              </button>
-            )}
-          </>
-        )}
       </div>
 
       {editing ? (
