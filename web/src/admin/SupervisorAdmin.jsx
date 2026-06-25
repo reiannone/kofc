@@ -487,6 +487,103 @@ function DealsReview() {
   );
 }
 
+/* ============================ UNIFIED REVIEW (inbox) ============================ */
+
+function UnifiedReview() {
+  // "Needs action" across both queues: deals submitted OR redlined OR shared drafts,
+  // and feedback still pending. Reuses the existing row + detail components per type.
+  const [scope, setScope] = React.useState('action'); // action | deals | feedback | all
+  const [agent, setAgent] = React.useState('');
+  const [deals, setDeals] = React.useState(null);
+  const [fb, setFb] = React.useState(null);
+  const [openDealId, setOpenDealId] = React.useState(null);
+  const [openFbId, setOpenFbId] = React.useState(null);
+  const [err, setErr] = React.useState(null);
+
+  const load = React.useCallback(() => {
+    setErr(null); setOpenDealId(null); setOpenFbId(null);
+    setDeals(null); setFb(null);
+    // Deals needing action: submitted + redlined (+ shared drafts) — fetch the buckets and merge.
+    Promise.all([
+      apiGet('deals-review-list.php?status=submitted').then((d) => d.items || []).catch(() => []),
+      apiGet('deals-review-list.php?status=redlined').then((d) => d.items || []).catch(() => []),
+      apiGet('deals-review-list.php?status=draft').then((d) => d.items || []).catch(() => []),
+    ]).then(([sub, red, draft]) => {
+      const seen = new Set();
+      const merged = [];
+      for (const it of [...sub, ...red, ...draft]) {
+        if (seen.has(it.id)) continue;
+        seen.add(it.id); merged.push(it);
+      }
+      merged.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
+      setDeals(merged);
+    });
+    apiGet('feedback-list.php?status=new')
+      .then((d) => setFb(d.items || []))
+      .catch((e) => { setFb([]); setErr(e.message); });
+  }, []);
+  React.useEffect(() => { load(); }, [load]);
+
+  const agents = React.useMemo(() => {
+    const s = new Set();
+    (deals || []).forEach((d) => d.agent_id && s.add(d.agent_id));
+    (fb || []).forEach((f) => f.agent_id && s.add(f.agent_id));
+    return Array.from(s).sort();
+  }, [deals, fb]);
+
+  const shownDeals = (deals || []).filter((d) => !agent || d.agent_id === agent);
+  const shownFb = (fb || []).filter((f) => !agent || f.agent_id === agent);
+  const showDeals = scope === 'action' || scope === 'deals' || scope === 'all';
+  const showFb = scope === 'action' || scope === 'feedback' || scope === 'all';
+  const totalAction = shownDeals.length + shownFb.length;
+
+  const SCOPES = [['action', 'Needs action'], ['deals', 'Deals'], ['feedback', 'Feedback'], ['all', 'All']];
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        {SCOPES.map(([k, lab]) => (
+          <button key={k} onClick={() => { setScope(k); setAgent(''); }}
+            style={{ background: scope === k ? C.blue : '#eef2f9', color: scope === k ? '#fff' : C.sub, border: 'none', borderRadius: 6, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+            {lab}{k === 'action' && (deals && fb) ? ` (${totalAction})` : ''}
+          </button>
+        ))}
+        <select value={agent} onChange={(e) => setAgent(e.target.value)}
+          style={{ marginLeft: 'auto', border: `1px solid ${C.border}`, borderRadius: 6, padding: '6px 10px', fontSize: 12, background: '#fff', color: C.text }}>
+          <option value="">All agents</option>
+          {agents.map((a) => <option key={a} value={a}>{a}</option>)}
+        </select>
+      </div>
+
+      {showDeals && (
+        <div style={{ ...cardStyle, marginBottom: 16 }}>
+          <h2 style={h2Style}>Deals needing review{deals ? ` · ${shownDeals.length}` : ''}</h2>
+          {deals === null ? <div style={{ color: C.sub }}>Loading…</div>
+            : shownDeals.length === 0 ? <div style={{ color: C.sub }}>No deals awaiting review.</div>
+            : shownDeals.map((it) => (
+                <DealReviewRow key={it.id} it={it} open={openDealId === it.id}
+                  onToggle={() => setOpenDealId((cur) => (cur === it.id ? null : it.id))} onActed={load} />
+              ))}
+        </div>
+      )}
+
+      {showFb && (
+        <div style={cardStyle}>
+          <h2 style={h2Style}>Feedback needing review{fb ? ` · ${shownFb.length}` : ''}</h2>
+          {fb === null ? <div style={{ color: C.sub }}>Loading…</div>
+            : shownFb.length === 0 ? <div style={{ color: C.sub }}>No feedback awaiting review.</div>
+            : shownFb.map((it) => (
+                <ReviewRow key={it.id} it={it} open={openFbId === it.id}
+                  onToggle={() => setOpenFbId((cur) => (cur === it.id ? null : it.id))} onActed={load} />
+              ))}
+        </div>
+      )}
+
+      {err && <div style={{ color: C.no, fontSize: 12, marginTop: 8 }}>{err}</div>}
+    </div>
+  );
+}
+
 /* ============================ RETRIEVAL TUNING ============================ */
 
 function RetrievalTuning() {
@@ -658,7 +755,7 @@ function PromptsAdmin() {
 }
 
 export default function SupervisorAdmin() {
-  const [pane, setPane] = React.useState('feedback');
+  const [pane, setPane] = React.useState('review');
   const [metrics, setMetrics] = React.useState(null);
   const [status, setStatus] = React.useState('new');
   const [agent, setAgent] = React.useState('');
@@ -699,7 +796,7 @@ export default function SupervisorAdmin() {
   return (
     <div>
       <div style={{ display: 'flex', gap: 6, marginBottom: 18, borderBottom: `1px solid ${C.border}`, paddingBottom: 12 }}>
-        {[['feedback', 'Feedback'], ['deals', 'Deals'], ['retrieval', 'Retrieval'], ['prompts', 'Prompts']].map(([k, lab]) => (
+        {[['review', 'Review'], ['feedback', 'Feedback'], ['deals', 'Deals'], ['retrieval', 'Retrieval'], ['prompts', 'Prompts']].map(([k, lab]) => (
           <button key={k} onClick={() => setPane(k)}
             style={{ background: pane === k ? C.navy : 'transparent', color: pane === k ? '#fff' : C.sub,
               border: pane === k ? 'none' : `1px solid ${C.border}`, borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
@@ -708,6 +805,7 @@ export default function SupervisorAdmin() {
         ))}
       </div>
 
+      {pane === 'review' && <UnifiedReview />}
       {pane === 'deals' && <DealsReview />}
       {pane === 'retrieval' && <RetrievalTuning />}
       {pane === 'prompts' && <PromptsAdmin />}
