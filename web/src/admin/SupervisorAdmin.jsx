@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { diffWords } from 'diff';
 import { C, cardStyle, h2Style, tag } from './theme.js';
 import { apiGet, apiPost } from '../api.js';
 
@@ -10,6 +11,19 @@ const TABS = [
   { s: 'dismissed', label: 'Dismissed' },
   { s: 'all', label: 'All' },
 ];
+
+function Redline({ oldText, newText }) {
+  const parts = React.useMemo(() => diffWords(oldText || '', newText || ''), [oldText, newText]);
+  return (
+    <div style={{ fontSize: 13, lineHeight: 1.7, whiteSpace: 'pre-wrap', fontFamily: 'ui-monospace, Menlo, Consolas, monospace', border: `1px solid ${C.border}`, borderRadius: 6, padding: 12, background: '#fff' }}>
+      {parts.map((p, i) => {
+        if (p.added) return <span key={i} style={{ background: '#e6f4ea', color: '#1e7e34', textDecoration: 'underline' }}>{p.value}</span>;
+        if (p.removed) return <span key={i} style={{ background: '#fdeaec', color: '#b02a37', textDecoration: 'line-through' }}>{p.value}</span>;
+        return <span key={i}>{p.value}</span>;
+      })}
+    </div>
+  );
+}
 
 function Md({ text }) {
   return (
@@ -200,19 +214,57 @@ function DealReviewDetail({ id, onActed }) {
   const [err, setErr] = React.useState(null);
   const [notes, setNotes] = React.useState('');
   const [msg, setMsg] = React.useState('');
+  const [versions, setVersions] = React.useState(null);
+  const [editing, setEditing] = React.useState(false);
+  const [editText, setEditText] = React.useState('');
+  const [savingEdit, setSavingEdit] = React.useState(false);
+  const [showHistory, setShowHistory] = React.useState(false);
+  const [mode, setMode] = React.useState('redline'); // 'redline' | 'clean'
+  const [fromV, setFromV] = React.useState(null);
+  const [toV, setToV] = React.useState(null);
+
+  const loadVersions = React.useCallback(() => {
+    apiGet(`deal-versions.php?deal_id=${id}`)
+      .then((d) => {
+        const items = d.items || [];
+        setVersions(items);
+        if (items.length >= 2) {
+          setFromV(items[0].version_no);
+          setToV(items[items.length - 1].version_no);
+        }
+      })
+      .catch(() => setVersions([]));
+  }, [id]);
 
   React.useEffect(() => {
     let live = true;
     apiGet(`deal-get.php?id=${id}`)
       .then((d) => { if (live) { setData(d); setNotes(d.deal?.review_notes || ''); } })
       .catch((e) => { if (live) setErr(e.message); });
+    loadVersions();
     return () => { live = false; };
-  }, [id]);
+  }, [id, loadVersions]);
 
   async function act(action) {
     setMsg('Working…');
     try { await apiPost('deal-review.php', { id, action, review_notes: notes }); onActed(); }
     catch (e) { setMsg(e.message); }
+  }
+
+  async function saveEdit() {
+    setSavingEdit(true); setMsg('');
+    try {
+      await apiPost('deal-update.php', { id, deal_sheet: editText });
+      const d = await apiGet(`deal-get.php?id=${id}`);
+      setData(d);
+      setEditing(false);
+      loadVersions();
+      setMsg('Deal sheet updated.');
+    } catch (e) {
+      setMsg(e.message);
+    } finally {
+      setSavingEdit(false);
+    }
   }
 
   if (err) return <div style={{ borderTop: `1px solid ${C.border}`, padding: 14, color: C.no, fontSize: 12 }}>{err}</div>;
@@ -243,8 +295,73 @@ function DealReviewDetail({ id, onActed }) {
       </div>
       {profileBits.length > 0 && <div style={q}><b>Profile:</b> {profileBits.join(' · ')}</div>}
       {deal.submit_note && <div style={q}><b>Agent note:</b> {deal.submit_note}</div>}
-      <div style={q}><b>Deal sheet:</b></div>
-      {deal.deal_sheet ? <Md text={deal.deal_sheet} /> : <div style={{ color: C.sub, fontSize: 12 }}>No deal sheet generated.</div>}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '6px 0' }}>
+        <b style={{ fontSize: 13 }}>Deal sheet:</b>
+        {!editing && (
+          <>
+            <button onClick={() => { setEditText(deal.deal_sheet || ''); setEditing(true); setShowHistory(false); }}
+              style={{ fontSize: 11, padding: '3px 10px', borderRadius: 6, border: `1px solid ${C.border}`, background: '#fff', color: C.navy, cursor: 'pointer' }}>
+              Edit
+            </button>
+            {versions && versions.length >= 2 && (
+              <button onClick={() => setShowHistory((s) => !s)}
+                style={{ fontSize: 11, padding: '3px 10px', borderRadius: 6, border: `1px solid ${C.border}`, background: showHistory ? '#eef2f9' : '#fff', color: C.navy, cursor: 'pointer' }}>
+                {showHistory ? 'Hide changes' : `Show changes (${versions.length})`}
+              </button>
+            )}
+          </>
+        )}
+      </div>
+
+      {editing ? (
+        <div>
+          <textarea value={editText} onChange={(e) => setEditText(e.target.value)}
+            style={{ width: '100%', minHeight: 280, padding: '10px', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 12, fontFamily: 'ui-monospace, Menlo, Consolas, monospace', lineHeight: 1.5, resize: 'vertical', boxSizing: 'border-box' }} />
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <button onClick={saveEdit} disabled={savingEdit}
+              style={{ background: C.blue, color: '#fff', border: 'none', borderRadius: 6, padding: '7px 14px', fontSize: 12, cursor: savingEdit ? 'default' : 'pointer' }}>
+              {savingEdit ? 'Saving…' : 'Save edit'}
+            </button>
+            <button onClick={() => setEditing(false)} disabled={savingEdit}
+              style={{ background: 'transparent', color: C.sub, border: `1px solid ${C.border}`, borderRadius: 6, padding: '7px 14px', fontSize: 12, cursor: 'pointer' }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : showHistory && versions && versions.length >= 2 ? (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8, fontSize: 12, color: C.sub }}>
+            <span>Compare</span>
+            <select value={fromV ?? ''} onChange={(e) => setFromV(Number(e.target.value))}
+              style={{ fontSize: 12, padding: '4px 8px', border: `1px solid ${C.border}`, borderRadius: 6 }}>
+              {versions.map((v) => <option key={v.version_no} value={v.version_no}>v{v.version_no} · {v.source}</option>)}
+            </select>
+            <span>→</span>
+            <select value={toV ?? ''} onChange={(e) => setToV(Number(e.target.value))}
+              style={{ fontSize: 12, padding: '4px 8px', border: `1px solid ${C.border}`, borderRadius: 6 }}>
+              {versions.map((v) => <option key={v.version_no} value={v.version_no}>v{v.version_no} · {v.source}</option>)}
+            </select>
+            <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 4 }}>
+              {['redline', 'clean'].map((m) => (
+                <button key={m} onClick={() => setMode(m)}
+                  style={{ fontSize: 11, padding: '3px 10px', borderRadius: 6, border: 'none', cursor: 'pointer', textTransform: 'capitalize', background: mode === m ? C.blue : '#eef2f9', color: mode === m ? '#fff' : C.sub }}>
+                  {m}
+                </button>
+              ))}
+            </span>
+          </div>
+          {(() => {
+            const from = versions.find((v) => v.version_no === fromV);
+            const to = versions.find((v) => v.version_no === toV);
+            if (!to) return <div style={{ color: C.sub, fontSize: 12 }}>Pick two versions.</div>;
+            return mode === 'redline'
+              ? <Redline oldText={from?.deal_sheet || ''} newText={to.deal_sheet || ''} />
+              : <Md text={to.deal_sheet || ''} />;
+          })()}
+        </div>
+      ) : (
+        deal.deal_sheet ? <Md text={deal.deal_sheet} /> : <div style={{ color: C.sub, fontSize: 12 }}>No deal sheet generated.</div>
+      )}
 
       {data.messages && data.messages.length > 0 && (
         <details style={{ marginTop: 8 }}>

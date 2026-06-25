@@ -11,6 +11,7 @@ header('Content-Type: application/json');
 require __DIR__ . '/cors.php';
 require __DIR__ . '/config.php';
 require __DIR__ . '/deal-title.php';
+require __DIR__ . '/deal-versions-lib.php';
 kofc_cors();
 
 try {
@@ -70,6 +71,11 @@ try {
         ]);
         $dealId = (int)$pdo->lastInsertId();
         $status = 'draft';
+    }
+
+    // Version the sheet when the agent provided one (no-op if unchanged from last version).
+    if ($sheet !== false) {
+        kofc_snapshot_deal_sheet($pdo, $dealId, $sheet !== false ? $sheet : null, $agentId, 'agent');
     }
 
     echo json_encode(['deal_id' => $dealId, 'status' => $status, 'title' => $title]);
