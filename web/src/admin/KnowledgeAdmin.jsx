@@ -11,6 +11,9 @@ export default function KnowledgeAdmin() {
   const [hover, setHover] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const fileRef = React.useRef(null);
+  const [openSource, setOpenSource] = React.useState(null); // expanded document
+  const [chunks, setChunks] = React.useState(null);         // chunks for the open doc
+  const [chunksErr, setChunksErr] = React.useState(null);
 
   const load = React.useCallback(() => {
     apiGet('kb-list.php')
@@ -49,6 +52,17 @@ export default function KnowledgeAdmin() {
     if (!confirm(`Delete "${source}" from the knowledge base?`)) return;
     try { await apiPost('kb-delete.php', { source }); setStatus({ text: `Deleted ${source}.`, cls: 'ok' }); load(); }
     catch (e) { setStatus({ text: e.message, cls: 'err' }); }
+  }
+
+  async function toggleDoc(source) {
+    if (openSource === source) { setOpenSource(null); setChunks(null); setChunksErr(null); return; }
+    setOpenSource(source); setChunks(null); setChunksErr(null);
+    try {
+      const d = await apiGet(`kb-doc.php?source=${encodeURIComponent(source)}`);
+      setChunks(d.chunks || []);
+    } catch (e) {
+      setChunksErr(e.message); setChunks([]);
+    }
   }
 
   const labels = Object.fromEntries(Object.entries(collections).map(([id, c]) => [id, c.label]));
@@ -101,15 +115,50 @@ export default function KnowledgeAdmin() {
             ) : docs.length === 0 ? (
               <tr><td style={{ ...td, color: C.sub }} colSpan={4}>Nothing ingested yet.</td></tr>
             ) : docs.map((d) => (
-              <tr key={d.source}>
-                <td style={td}>{d.source}</td>
-                <td style={td}><span style={tag}>{labels[d.collection] || d.collection}</span></td>
-                <td style={td}>{d.chunks}</td>
-                <td style={td}>
-                  <button onClick={() => del(d.source)}
-                    style={{ background: 'transparent', color: C.no, padding: '4px 8px', fontSize: 12, border: 'none', cursor: 'pointer' }}>Delete</button>
-                </td>
-              </tr>
+              <React.Fragment key={d.source}>
+                <tr style={{ cursor: 'pointer', background: openSource === d.source ? '#f7f9fc' : 'transparent' }}>
+                  <td style={td} onClick={() => toggleDoc(d.source)}>
+                    <span style={{ color: C.blue, fontWeight: 600 }}>
+                      {openSource === d.source ? '▾ ' : '▸ '}{d.source}
+                    </span>
+                  </td>
+                  <td style={td} onClick={() => toggleDoc(d.source)}><span style={tag}>{labels[d.collection] || d.collection}</span></td>
+                  <td style={td} onClick={() => toggleDoc(d.source)}>{d.chunks}</td>
+                  <td style={td}>
+                    <button onClick={() => del(d.source)}
+                      style={{ background: 'transparent', color: C.no, padding: '4px 8px', fontSize: 12, border: 'none', cursor: 'pointer' }}>Delete</button>
+                  </td>
+                </tr>
+                {openSource === d.source && (
+                  <tr>
+                    <td colSpan={4} style={{ ...td, background: '#fbfcfe', padding: '12px 14px' }}>
+                      {chunksErr ? (
+                        <div style={{ color: C.no, fontSize: 12 }}>{chunksErr}</div>
+                      ) : chunks === null ? (
+                        <div style={{ color: C.sub, fontSize: 12 }}>Loading chunks…</div>
+                      ) : chunks.length === 0 ? (
+                        <div style={{ color: C.sub, fontSize: 12 }}>No chunks.</div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          <div style={{ fontSize: 11, color: C.sub, textTransform: 'uppercase', fontWeight: 600 }}>
+                            {chunks.length} chunk{chunks.length === 1 ? '' : 's'} — the text embedded for retrieval
+                          </div>
+                          {chunks.map((c) => (
+                            <div key={c.id} style={{ border: `1px solid ${C.border}`, borderRadius: 6, background: '#fff' }}>
+                              <div style={{ fontSize: 10, color: C.sub, padding: '4px 8px', borderBottom: `1px solid ${C.border}`, fontWeight: 600 }}>
+                                #{c.chunk_index}
+                              </div>
+                              <div style={{ fontSize: 12, color: C.text, lineHeight: 1.6, whiteSpace: 'pre-wrap', padding: '8px 10px', maxHeight: 220, overflow: 'auto' }}>
+                                {c.chunk_text}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
             ))}
           </tbody>
         </table>
