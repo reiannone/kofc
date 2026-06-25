@@ -384,7 +384,7 @@ export default function App({ user, onLogout }) {
     setMessages([]); setConvId(null); setInput(''); setError(null);
     setFb({}); setDownIdx(null); setNeeds([]); setHold(false); setPendingFills([]);
     setPullNote(''); setFilledKeys(new Set()); autoPulledRef.current = null;
-    setDealId(null); dealIdRef.current = null; setClientName(''); setDealTitle(''); setDealStatus('draft'); setReviewState('none'); setSharedDraft(false); setVersions(null); setSheetSources([]); setDealSheet(''); setView('chat'); setDealMsg('');
+    setDealId(null); dealIdRef.current = null; setFirstName(''); setLastName(''); setDealTitle(''); setDealStatus('draft'); setReviewState('none'); setSharedDraft(false); setVersions(null); setSheetSources([]); setDealSheet(''); setView('chat'); setDealMsg('');
   }
 
   async function sendFeedback(idx, vote, reason, fix) {
@@ -548,7 +548,9 @@ export default function App({ user, onLogout }) {
   // ================= DEALS (workspace on the AI Agent tab) =================
   const [dealId, setDealId] = React.useState(null);
   const dealIdRef = React.useRef(null); // synchronous mirror of dealId; sendMessage reads this to avoid setState render lag
-  const [clientName, setClientName] = React.useState('');
+  const [firstName, setFirstName] = React.useState('');
+  const [lastName, setLastName] = React.useState('');
+  const clientName = `${firstName} ${lastName}`.trim();
   const [dealTitle, setDealTitle] = React.useState('');
   const [dealStatus, setDealStatus] = React.useState('draft');
   const [reviewState, setReviewState] = React.useState('none'); // none | redlined | accepted
@@ -597,7 +599,10 @@ export default function App({ user, onLogout }) {
       const deal = d.deal || {};
       setDealId(deal.id || id);
       dealIdRef.current = deal.id || id;
-      setClientName(deal.client_name || '');
+      const cn = (deal.client_name || '').trim();
+      const sp = cn.indexOf(' ');
+      setFirstName(sp === -1 ? cn : cn.slice(0, sp));
+      setLastName(sp === -1 ? '' : cn.slice(sp + 1));
       setDealTitle(deal.title || '');
       setDealStatus(deal.status || 'draft');
       setReviewState(deal.review_state || 'none');
@@ -671,13 +676,25 @@ export default function App({ user, onLogout }) {
   };
   const dealBtn = { display: 'flex', alignItems: 'center', gap: 5, padding: '6px 10px', fontSize: 12, border: `1px solid ${C.border}`, background: '#fff', color: C.navy, borderRadius: 6, cursor: 'pointer' };
 
+  function clearForm() {
+    setDealTitle(''); setFirstName(''); setLastName(''); setDealMsg('');
+  }
+
   function renderDealBar() {
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: `1px solid ${C.border}`, background: C.card, flexWrap: 'wrap' }}>
         <input value={dealTitle} onChange={(e) => setDealTitle(e.target.value)} placeholder="Deal title"
           style={{ ...inputStyle, width: 200, padding: '6px 8px', fontSize: 13 }} title="Names this deal in your list. Left blank, it defaults to the client (or your name) plus the date." />
-        <input value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Client name"
-          style={{ ...inputStyle, width: 150, padding: '6px 8px', fontSize: 13 }} />
+        <input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="First name"
+          style={{ ...inputStyle, width: 120, padding: '6px 8px', fontSize: 13 }} />
+        <input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Last name"
+          style={{ ...inputStyle, width: 120, padding: '6px 8px', fontSize: 13 }} />
+        <button onClick={newConversation} style={dealBtn} title="Start a brand-new deal">
+          <Plus size={13} /> New deal
+        </button>
+        <button onClick={clearForm} style={dealBtn} title="Clear the title and name fields">
+          <XCircle size={13} /> Clear
+        </button>
         <button onClick={saveDeal} disabled={dealBusy} style={dealBtn} title="Save work in progress">
           {dealBusy ? <Loader2 size={13} className="spin" /> : <Save size={13} />} Save
         </button>
