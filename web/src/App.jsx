@@ -613,7 +613,11 @@ export default function App({ user, onLogout }) {
       if (p) { setProfile({ ...EMPTY, ...hydrateProfile(p) }); setProfileTouched(true); }
       else { setProfile(EMPTY); setProfileTouched(false); }
       setFilledKeys(new Set()); setPullNote(''); autoPulledRef.current = null;
-      setView('chat');
+      // Land on the most useful view. A deal with a sheet but no conversation would otherwise
+      // open into an empty chat (looks blank) — show its sheet instead.
+      const hasSheet = !!(deal.deal_sheet && deal.deal_sheet.trim());
+      const hasConvo = !!deal.conversation_id && (d.messages || []).length > 0;
+      setView(hasSheet && !hasConvo ? 'sheet' : 'chat');
     } catch (e) { setDealMsg(e.message); }
   }
   async function shareDraft() {
