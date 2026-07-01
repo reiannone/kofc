@@ -10,6 +10,7 @@ import AdminHome from './admin/AdminHome.jsx';
 import KnowledgeAdmin from './admin/KnowledgeAdmin.jsx';
 import UsersAdmin from './admin/UsersAdmin.jsx';
 import SupervisorAdmin from './admin/SupervisorAdmin.jsx';
+import LicensingAdmin from './admin/LicensingAdmin.jsx';
 import { me, logout } from './api.js';
 
 function Root() {
@@ -44,6 +45,7 @@ function Root() {
           <Route path="knowledge" element={<KnowledgeAdmin />} />
           <Route path="users" element={<UsersAdmin />} />
           <Route path="supervisor" element={<SupervisorAdmin />} />
+          <Route path="licensing" element={<LicensingAdmin />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
