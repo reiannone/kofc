@@ -18,6 +18,7 @@ require __DIR__ . '/ai.php';
 require __DIR__ . '/kb.php';
 require __DIR__ . '/prompts.php';
 require __DIR__ . '/product-gates.php';
+require __DIR__ . '/licensing-lib.php';
 
 kofc_cors();
 
@@ -60,6 +61,10 @@ try {
     // Retrieval on the latest message (product + training passages).
     $kbCtx = kofc_kb_context($message, 5);
     $kb = require __DIR__ . '/products.php';
+
+    // Structured, state-keyed licensing facts (bypasses fuzzy KB retrieval for data
+    // that must be exact). Null unless the message names exactly one U.S. state.
+    $licensing = kofc_licensing_for_query($pdo, $message);
 
     // Known structured facts (from the Recommend tab), so the model doesn't re-ask.
     $known = (is_array($body) && isset($body['profile']) && is_array($body['profile']))
@@ -119,6 +124,11 @@ try {
     foreach ($history as $row) {
         $messages[] = ['role' => $row['role'], 'content' => $row['content']];
     }
+    // Authoritative licensing facts lead the KB passages (planning mode only) — exact,
+    // state-keyed data must win over any fuzzy-retrieved text.
+    if (!$held && $licensing !== null) {
+        $messages[] = ['role' => 'system', 'content' => $licensing['text']];
+    }
     // KB grounding only in planning mode — a gathering turn is just asking questions.
     if (!$held && $kbCtx !== '') {
         $messages[] = ['role' => 'system', 'content' => "Relevant KofC passages for this turn:\n\n" . $kbCtx];
@@ -133,6 +143,14 @@ try {
     $pdo->prepare('UPDATE conversations SET updated_at = NOW() WHERE id = :c')
         ->execute([':c' => $convId]);
 
+    // Per-response citations: KB sources the reply was grounded in, plus the structured
+    // licensing source (DOI) when a state was resolved, so SourceFooter can link it.
+    $sources = $held ? [] : kofc_kb_last_sources();
+    if (!is_array($sources)) { $sources = []; }
+    if (!$held && $licensing !== null) {
+        $sources[] = $licensing['citation'];
+    }
+
     echo json_encode([
         'conversation_id'       => $convId,
         'reply'                 => $reply,
@@ -143,7 +161,7 @@ try {
         'gap_category'          => $detect['category'] ?? null,
         // Per-response citation: KofC source documents the reply was grounded in
         // (empty while gathering/held, or until real source docs are ingested).
-        'sources'               => $held ? [] : kofc_kb_last_sources(),
+        'sources'               => $sources,
         'disclaimer'            => 'AI planning support for KofC field-agent use. Not a suitability '
                                  . 'determination; the licensed agent owns the final plan and all client contact.',
     ]);
