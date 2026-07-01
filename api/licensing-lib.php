@@ -13,6 +13,7 @@
  *
  * Data source of truth: table licensing_state_requirements (see licensing-schema.sql).
  * Verify-only fields are NULL in the table and render here as a DOI hand-off.
+ * Rev: detect-span-consume (fixes West Virginia / Washington DC over-match).
  * ------------------------------------------------------------------
  */
 
@@ -77,6 +78,12 @@ function kofc_licensing_detect_state($text) {
         $pattern = "/\\b" . preg_quote($name, "/") . "\\b/";
         if (preg_match($pattern, $lower)) {
             $found[$map[$name]] = true;
+            // Consume the matched span so a shorter contained name (e.g. "virginia"
+            // inside "west virginia", or "washington" inside "washington dc") cannot
+            // double-match and trip the ambiguity guard below. Rev: detect-span-consume
+            $lower = preg_replace_callback($pattern, function($m) {
+                return str_repeat(" ", strlen($m[0]));
+            }, $lower);
         }
     }
 
