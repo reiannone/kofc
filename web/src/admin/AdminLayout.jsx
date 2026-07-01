@@ -7,6 +7,7 @@ const TABS = [
   { to: '/admin', label: 'Home', end: true },
   { to: '/admin/knowledge', label: 'Knowledge Base' },
   { to: '/admin/supervisor', label: 'Supervisor' },
+  { to: '/admin/licensing', label: 'Licensing' },
   { to: '/admin/users', label: 'Users' },
 ];
 

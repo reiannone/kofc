@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { BookOpen, ShieldCheck, Users } from 'lucide-react';
+import { BookOpen, ShieldCheck, Users, FileText } from 'lucide-react';
 import { C } from './theme.js';
 import { apiGet } from '../api.js';
 
@@ -32,6 +32,7 @@ export default function AdminHome() {
   const [kb, setKb] = React.useState({ value: '…', sub: '' });
   const [sup, setSup] = React.useState({ value: '…', sub: '' });
   const [usr, setUsr] = React.useState({ value: '…', sub: '' });
+  const [lic, setLic] = React.useState({ value: '…', sub: '' });
 
   React.useEffect(() => {
     apiGet('kb-list.php')
@@ -49,6 +50,10 @@ export default function AdminHome() {
     apiGet('user-list.php')
       .then((u) => { const n = (u.users || []).length; setUsr({ value: n, label: n === 1 ? 'user' : 'users', sub: '' }); })
       .catch(() => setUsr({ value: '—', label: 'users', sub: '' }));
+
+    apiGet('licensing-admin.php')
+      .then((d) => { const s = d.summary || {}; setLic({ value: s.verified ?? 0, label: 'verified', sub: s.total != null ? 'of ' + s.total : '' }); })
+      .catch(() => setLic({ value: '—', label: 'verified', sub: '' }));
   }, []);
 
   return (
@@ -63,6 +68,9 @@ export default function AdminHome() {
         <StatCard to="/admin/supervisor" Icon={ShieldCheck} title="Supervisor"
           desc="Review agent feedback and promote vetted answers back into retrieval."
           value={sup.value} label={sup.label || 'pending review'} sub={sup.sub} cta="Open dashboard" />
+        <StatCard to="/admin/licensing" Icon={FileText} title="Licensing & Regulations"
+          desc="Per-state license and training requirements the AI Agent cites when answering licensing questions."
+          value={lic.value} label={lic.label || 'verified'} sub={lic.sub} cta="Review licensing" />
         <StatCard to="/admin/users" Icon={Users} title="Users"
           desc="Create accounts, assign roles, and reset passwords for AI Agent users."
           value={usr.value} label={usr.label || 'users'} sub={usr.sub} cta="Manage users" />
