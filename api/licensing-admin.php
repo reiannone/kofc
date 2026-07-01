@@ -8,10 +8,12 @@
  * Returns: { summary: {total, verified, pending}, rows: [ {..per state..} ] }
  */
 declare(strict_types=1);
+session_start();
 header('Content-Type: application/json');
 
 require __DIR__ . '/cors.php';
 require __DIR__ . '/config.php';
+require __DIR__ . '/admin-auth.php';
 
 kofc_cors();
 
