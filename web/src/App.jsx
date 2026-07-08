@@ -706,7 +706,7 @@ export default function App({ user, onLogout }) {
             {dealBusy ? <Loader2 size={13} className="spin" /> : <Save size={13} />} Save
           </button>
           <button onClick={openDealsList} style={dealBtn} title="My scenarios in the works">
-            <FolderOpen size={13} /> My deals
+            <FolderOpen size={13} /> My Scenarios
           </button>
           <button onClick={generateSheet} style={dealBtn} title="Generate an client scenario worksheet">
             <FileText size={13} /> Scenario worksheets
@@ -927,7 +927,7 @@ export default function App({ user, onLogout }) {
       </header>
 
       <div style={{ display: 'flex', background: C.bg, borderBottom: `1px solid ${C.border}` }}>
-        {tabBtn('advisor', 'AI Agent', MessageSquare)}
+        {tabBtn('advisor', 'AgentSword', MessageSquare)}
         {tabBtn('recommend', 'Recommend', Sparkles)}
       </div>
 
