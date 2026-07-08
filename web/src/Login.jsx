@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, LogIn, Loader2 } from 'lucide-react';
+import { Shield, LogIn, Loader2, Eye, EyeOff } from 'lucide-react';
 import { login } from './api.js';
 
 const C = { navy: '#1b2a4a', blue: '#2f5597', bg: '#f5f6f8', border: '#dfe3ea', sub: '#666', no: '#b02a37' };
@@ -7,6 +7,7 @@ const C = { navy: '#1b2a4a', blue: '#2f5597', bg: '#f5f6f8', border: '#dfe3ea', 
 export default function Login({ onLogin }) {
   const [u, setU] = React.useState('');
   const [p, setP] = React.useState('');
+  const [showPw, setShowPw] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState(null);
 
@@ -33,8 +34,16 @@ export default function Login({ onLogin }) {
         </div>
         <input style={input} placeholder="Username" value={u}
           onChange={(e) => setU(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} />
-        <input style={input} type="password" placeholder="Password" value={p}
-          onChange={(e) => setP(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} />
+        <div style={{ position: 'relative', marginBottom: 12 }}>
+          <input style={{ ...input, marginBottom: 0, paddingRight: 40 }} type={showPw ? 'text' : 'password'} placeholder="Password" value={p}
+            onChange={(e) => setP(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} />
+          <button type="button" onClick={() => setShowPw((v) => !v)} tabIndex={-1}
+            aria-label={showPw ? 'Hide password' : 'Show password'}
+            title={showPw ? 'Hide password' : 'Show password'}
+            style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', padding: 4, cursor: 'pointer', color: C.sub, display: 'flex', alignItems: 'center' }}>
+            {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+        </div>
         {err && <div style={{ color: C.no, fontSize: 13, marginBottom: 10 }}>{err}</div>}
         <button onClick={submit} disabled={busy}
           style={{ width: '100%', padding: '10px', background: C.blue, color: '#fff', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
