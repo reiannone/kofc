@@ -545,7 +545,7 @@ export default function App({ user, onLogout }) {
   const flagsFor = (idx) => (result?.guardrail_flags || []).filter((f) => f.item_index === idx);
   const globalFlags = (result?.guardrail_flags || []).filter((f) => f.item_index === null);
 
-  // ================= DEALS (workspace on the AI Agent tab) =================
+  // ================= DEALS (workspace on the AgentSword tab) =================
   const [dealId, setDealId] = React.useState(null);
   const dealIdRef = React.useRef(null); // synchronous mirror of dealId; sendMessage reads this to avoid setState render lag
   const [firstName, setFirstName] = React.useState('');
@@ -626,7 +626,7 @@ export default function App({ user, onLogout }) {
     } catch (e) { setDealMsg(e.message); }
   }
   async function shareDraft() {
-    if (!dealId) { setDealMsg('Save the deal first.'); return; }
+    if (!dealId) { setDealMsg('Save the scenario first.'); return; }
     setDealBusy(true); setDealMsg('');
     try {
       await apiPost('deal-share.php', { id: dealId });
@@ -665,7 +665,7 @@ export default function App({ user, onLogout }) {
   }
   async function saveSheet() {
     setDealBusy(true); setDealMsg('');
-    try { await ensureDeal(); setDealMsg('Deal sheet saved.'); }
+    try { await ensureDeal(); setDealMsg('Scenario saved.'); }
     catch (e) { setDealMsg(e.message); }
     finally { setDealBusy(false); }
   }
@@ -685,9 +685,9 @@ export default function App({ user, onLogout }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', borderBottom: `1px solid ${C.border}`, background: C.card }}>
         {/* Row 1 — identity: what this deal is */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <input value={dealTitle} onChange={(e) => setDealTitle(e.target.value)} placeholder="Deal title"
+          <input value={dealTitle} onChange={(e) => setDealTitle(e.target.value)} placeholder="Scenario title"
             style={{ ...inputStyle, flex: '1 1 220px', minWidth: 160, padding: '7px 9px', fontSize: 13 }}
-            title="Names this deal in your list. Left blank, it defaults to the client (or your name) plus the date." />
+            title="Names this scenario in your list. Left blank, it defaults to the client (or your name) plus the date." />
           <input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="First name"
             style={{ ...inputStyle, flex: '0 1 150px', minWidth: 110, padding: '7px 9px', fontSize: 13 }} />
           <input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Last name"
@@ -696,8 +696,8 @@ export default function App({ user, onLogout }) {
 
         {/* Row 2 — actions + status */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <button onClick={newConversation} style={dealBtn} title="Start a brand-new deal">
-            <Plus size={13} /> New deal
+          <button onClick={newConversation} style={dealBtn} title="Start a brand-new scenario">
+            <Plus size={13} /> New Client Scenario
           </button>
           <button onClick={clearForm} style={dealBtn} title="Clear the title and name fields">
             <XCircle size={13} /> Clear
@@ -705,11 +705,11 @@ export default function App({ user, onLogout }) {
           <button onClick={saveDeal} disabled={dealBusy} style={dealBtn} title="Save work in progress">
             {dealBusy ? <Loader2 size={13} className="spin" /> : <Save size={13} />} Save
           </button>
-          <button onClick={openDealsList} style={dealBtn} title="My deals in the works">
+          <button onClick={openDealsList} style={dealBtn} title="My scenarios in the works">
             <FolderOpen size={13} /> My deals
           </button>
-          <button onClick={generateSheet} style={dealBtn} title="Generate an AI deal sheet">
-            <FileText size={13} /> Deal sheet
+          <button onClick={generateSheet} style={dealBtn} title="Generate an client scenario worksheet">
+            <FileText size={13} /> Scenario worksheets
           </button>
           <button onClick={submitDeal} disabled={dealBusy} style={{ ...dealBtn, borderColor: C.blue, color: '#fff', background: C.blue }} title="Submit to supervisor for review">
             <Send size={13} /> Submit
@@ -727,7 +727,7 @@ export default function App({ user, onLogout }) {
             {reviewState === 'redlined' && (
               <>
                 <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: '#fff7ed', color: '#b45309' }}>Redlined</span>
-                <button onClick={() => setView('sheet')} style={{ ...dealBtn, borderColor: '#b45309', color: '#b45309' }} title="Your supervisor edited this deal sheet — review the changes">Review edits</button>
+                <button onClick={() => setView('sheet')} style={{ ...dealBtn, borderColor: '#b45309', color: '#b45309' }} title="Your supervisor edited this scenario — review the changes">Review edits</button>
               </>
             )}
             {reviewState === 'accepted' && (
@@ -758,8 +758,8 @@ export default function App({ user, onLogout }) {
     return (
       <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
-          <h3 style={{ margin: 0, fontSize: 14, color: C.navy, flex: 1 }}>My deals</h3>
-          <button onClick={newConversation} style={dealBtn} title="Start a new conversation"><Plus size={13} /> New deal</button>
+          <h3 style={{ margin: 0, fontSize: 14, color: C.navy, flex: 1 }}>My Scenarios</h3>
+          <button onClick={newConversation} style={dealBtn} title="Start a new conversation"><Plus size={13} /> New Client Scenario</button>
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
           {FILTERS.map(([key, label]) => (
@@ -773,14 +773,14 @@ export default function App({ user, onLogout }) {
           ))}
         </div>
         {deals === null ? <div style={{ color: C.sub, fontSize: 13 }}>Loading…</div>
-          : list.length === 0 ? <div style={{ color: C.sub, fontSize: 13 }}>No saved deals yet. Start a new deal to begin.</div>
-          : shown.length === 0 ? <div style={{ color: C.sub, fontSize: 13 }}>No {dealFilter} deals.</div>
+          : list.length === 0 ? <div style={{ color: C.sub, fontSize: 13 }}>No saved scenarios yet. Start a new scenario to begin.</div>
+          : shown.length === 0 ? <div style={{ color: C.sub, fontSize: 13 }}>No {dealFilter} scenarios.</div>
           : shown.map((d) => (
               <div key={d.id} onClick={() => openDeal(d.id)} role="button" tabIndex={0}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDeal(d.id); } }}
                 style={{ display: 'flex', alignItems: 'center', gap: 10, border: `1px solid ${C.border}`, borderRadius: 8, padding: '10px 12px', marginBottom: 8, cursor: 'pointer', background: '#fff' }}>
                 <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: (d.title || d.client_name) ? C.text : C.sub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {d.title || d.client_name || '(untitled deal)'}
+                  {d.title || d.client_name || '(untitled scenario)'}
                 </span>
                 {Number(d.has_sheet) ? <FileText size={13} color={C.sub} /> : null}
                 {d.review_state === 'redlined' && <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: '#fff7ed', color: '#b45309', flexShrink: 0 }}>Redlined</span>}
@@ -797,7 +797,7 @@ export default function App({ user, onLogout }) {
     return (
       <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-          <h3 style={{ margin: 0, fontSize: 14, color: C.navy, flex: 1 }}>Deal sheet</h3>
+          <h3 style={{ margin: 0, fontSize: 14, color: C.navy, flex: 1 }}>Scenario Worksheet</h3>
           <button onClick={generateSheet} disabled={sheetLoading} style={dealBtn}>
             {sheetLoading ? <Loader2 size={13} className="spin" /> : <Sparkles size={13} />} {dealSheet ? 'Regenerate' : 'Generate'}
           </button>
@@ -806,7 +806,7 @@ export default function App({ user, onLogout }) {
         </div>
         {reviewState === 'redlined' && (
           <div style={{ border: '1px solid #fcd9a8', background: '#fff7ed', borderRadius: 10, padding: 12, marginBottom: 14 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#b45309', marginBottom: 6 }}>Your supervisor edited this deal sheet</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#b45309', marginBottom: 6 }}>Your supervisor edited this scenario worksheet</div>
             <div style={{ fontSize: 12, color: C.sub, marginBottom: 10 }}>
               Review the changes below, then accept them as-is — or edit the sheet yourself and re-submit.
             </div>
@@ -823,13 +823,13 @@ export default function App({ user, onLogout }) {
               </button>
             </div>
             <div style={{ fontSize: 10, color: C.sub, marginTop: 8 }}>
-              Accepting re-submits the deal with your supervisor’s version. Revising lets you edit below; saving and submitting sends your own revision.
+              Accepting re-submits the Client Scenario with your supervisor’s version. Revising lets you edit below; saving and submitting sends your own revision.
             </div>
           </div>
         )}
         {sheetLoading ? (
           <div style={{ color: C.sub, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Loader2 size={14} className="spin" /> Writing the deal sheet…
+            <Loader2 size={14} className="spin" /> Writing the Scenario worksheet…
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -897,7 +897,7 @@ export default function App({ user, onLogout }) {
     <div style={{ fontFamily: 'system-ui, sans-serif', background: C.bg, height: '100vh', display: 'flex', flexDirection: 'column', color: C.text }}>
       <header style={{ background: C.navy, color: '#fff', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
         <Shield size={18} />
-        <strong style={{ fontSize: 15 }}>KofC AI Agent</strong>
+        <strong style={{ fontSize: 15 }}>AgentSword</strong>
         {tab === 'advisor' && (
           <button onClick={newConversation} title="New conversation"
             style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', opacity: 0.9, display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
@@ -1083,7 +1083,7 @@ export default function App({ user, onLogout }) {
               <h3 style={{ margin: 0, fontSize: 14, color: C.navy, flex: 1 }}>Member profile</h3>
               {convId && (
                 <button onClick={() => pullFromConversation(false)} disabled={pulling}
-                  title="Fill this form from your AI Agent conversation"
+                  title="Fill this form from your AgentSword conversation"
                   style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', fontSize: 12,
                     border: `1px solid ${C.blue}`, background: '#fff', color: C.blue, borderRadius: 6,
                     cursor: pulling ? 'default' : 'pointer' }}>

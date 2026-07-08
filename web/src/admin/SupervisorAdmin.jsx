@@ -281,7 +281,7 @@ function DealReviewDetail({ id, onActed }) {
       setData(d);
       setEditing(false);
       loadVersions();
-      setMsg('Deal sheet updated.');
+      setMsg('Scenario worksheet updated.');
     } catch (e) {
       setMsg(e.message);
     } finally {
@@ -314,7 +314,7 @@ function DealReviewDetail({ id, onActed }) {
           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
             <button onClick={() => { setEditText(deal.deal_sheet || ''); setEditing(true); setShowHistory(false); }}
               style={{ fontSize: 13, fontWeight: 600, padding: '7px 16px', borderRadius: 6, border: 'none', background: C.blue, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
-              ✏️ Edit deal sheet
+              ✏️ Edit scenario worksheet
             </button>
             {versions && versions.length >= 2 && (
               <button onClick={() => setShowHistory((s) => !s)}
@@ -334,7 +334,7 @@ function DealReviewDetail({ id, onActed }) {
       {profileBits.length > 0 && <div style={q}><b>Profile:</b> {profileBits.join(' · ')}</div>}
       {deal.submit_note && <div style={q}><b>Agent note:</b> {deal.submit_note}</div>}
       <div style={{ margin: '6px 0' }}>
-        <b style={{ fontSize: 13 }}>Deal sheet:</b>
+        <b style={{ fontSize: 13 }}>Scenario worksheet:</b>
       </div>
 
       {editing ? (
@@ -384,7 +384,7 @@ function DealReviewDetail({ id, onActed }) {
           })()}
         </div>
       ) : (
-        deal.deal_sheet ? <Md text={deal.deal_sheet} /> : <div style={{ color: C.sub, fontSize: 12 }}>No deal sheet generated.</div>
+        deal.deal_sheet ? <Md text={deal.deal_sheet} /> : <div style={{ color: C.sub, fontSize: 12 }}>No scenario worksheet generated.</div>
       )}
 
       {data.messages && data.messages.length > 0 && (
@@ -421,7 +421,7 @@ function DealReviewRow({ it, open, onToggle, onActed }) {
         style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', cursor: 'pointer', background: open ? '#eef2f9' : '#fff' }}>
         <span style={{ color: C.sub, fontSize: 11, width: 10, flexShrink: 0, display: 'inline-block', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .12s' }}>▸</span>
         <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: (it.title || it.client_name) ? C.text : C.sub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {it.title || it.client_name || '(untitled deal)'}
+          {it.title || it.client_name || '(untitled scenario)'}
         </span>
         <span style={{ fontSize: 11, color: C.sub, flexShrink: 0 }}>{it.agent_id}</span>
         {it.review_state === 'redlined' && (
@@ -462,7 +462,7 @@ function DealsReview() {
 
   return (
     <div style={cardStyle}>
-      <h2 style={h2Style}>Deals for review{items ? ` · ${shown.length}` : ''}</h2>
+      <h2 style={h2Style}>Client Scenarios for review{items ? ` · ${shown.length}` : ''}</h2>
       <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
         {DEAL_TABS.map((t) => (
           <button key={t.s} onClick={() => { setStatus(t.s); setAgent(''); }}
@@ -537,7 +537,7 @@ function UnifiedReview() {
   const showFb = scope === 'action' || scope === 'feedback' || scope === 'all';
   const totalAction = shownDeals.length + shownFb.length;
 
-  const SCOPES = [['action', 'Needs action'], ['deals', 'Deals'], ['feedback', 'Feedback'], ['all', 'All']];
+  const SCOPES = [['action', 'Needs action'], ['deals', 'Scenarios'], ['feedback', 'Feedback'], ['all', 'All']];
 
   return (
     <div>
@@ -557,9 +557,9 @@ function UnifiedReview() {
 
       {showDeals && (
         <div style={{ ...cardStyle, marginBottom: 16 }}>
-          <h2 style={h2Style}>Deals needing review{deals ? ` · ${shownDeals.length}` : ''}</h2>
+          <h2 style={h2Style}>Client Scenarios needing review{deals ? ` · ${shownDeals.length}` : ''}</h2>
           {deals === null ? <div style={{ color: C.sub }}>Loading…</div>
-            : shownDeals.length === 0 ? <div style={{ color: C.sub }}>No deals awaiting review.</div>
+            : shownDeals.length === 0 ? <div style={{ color: C.sub }}>No scenarios awaiting review.</div>
             : shownDeals.map((it) => (
                 <DealReviewRow key={it.id} it={it} open={openDealId === it.id}
                   onToggle={() => setOpenDealId((cur) => (cur === it.id ? null : it.id))} onActed={load} />
@@ -796,7 +796,7 @@ export default function SupervisorAdmin() {
   return (
     <div>
       <div style={{ display: 'flex', gap: 6, marginBottom: 18, borderBottom: `1px solid ${C.border}`, paddingBottom: 12 }}>
-        {[['review', 'Review'], ['feedback', 'Feedback'], ['deals', 'Deals'], ['retrieval', 'Retrieval'], ['prompts', 'Prompts']].map(([k, lab]) => (
+        {[['review', 'Review'], ['feedback', 'Feedback'], ['deals', 'Scenarios'], ['retrieval', 'Retrieval'], ['prompts', 'Prompts']].map(([k, lab]) => (
           <button key={k} onClick={() => setPane(k)}
             style={{ background: pane === k ? C.navy : 'transparent', color: pane === k ? '#fff' : C.sub,
               border: pane === k ? 'none' : `1px solid ${C.border}`, borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>

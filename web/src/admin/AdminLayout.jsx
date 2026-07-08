@@ -28,7 +28,7 @@ export default function AdminLayout({ user, onLogout }) {
         <Link to="/admin" style={{
           fontSize: 13, fontWeight: 600, letterSpacing: '.02em', opacity: 0.85,
           marginRight: 14, color: '#fff', textDecoration: 'none', whiteSpace: 'nowrap',
-        }}>KofC AI Agent · Admin</Link>
+        }}>AgentSword · Admin</Link>
 
         {TABS.map((t) => (
           <NavLink key={t.to} to={t.to} end={t.end} style={linkStyle}>{t.label}</NavLink>
@@ -37,7 +37,7 @@ export default function AdminLayout({ user, onLogout }) {
         <Link to="/" style={{
           marginLeft: 'auto', color: '#cdd6e6', textDecoration: 'none', fontSize: 13,
           padding: '6px 12px', border: '1px solid rgba(255,255,255,.25)', borderRadius: 6, whiteSpace: 'nowrap',
-        }}>AI Agent ↗</Link>
+        }}>AgentSword ↗</Link>
 
         {user && <span style={{ fontSize: 12, opacity: 0.85, marginLeft: 10 }}>{user.username}</span>}
         {onLogout && (
