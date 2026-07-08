@@ -59,20 +59,20 @@ export default function AdminHome() {
   return (
     <div>
       <p style={{ color: C.sub, fontSize: 13, margin: '0 2px 20px' }}>
-        Manage the AI Agent's knowledge, supervise its answers, and administer access.
+        Manage the AgentSword's knowledge, supervise its answers, and administer access.
       </p>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
         <StatCard to="/admin/knowledge" Icon={BookOpen} title="Knowledge Base"
-          desc="Upload and manage the documents the AI Agent retrieves from when answering."
+          desc="Upload and manage the documents AgentSword retrieves from when answering."
           value={kb.value} label={kb.label || 'documents'} sub={kb.sub} cta="Manage documents" />
         <StatCard to="/admin/supervisor" Icon={ShieldCheck} title="Supervisor"
           desc="Review agent feedback and promote vetted answers back into retrieval."
           value={sup.value} label={sup.label || 'pending review'} sub={sup.sub} cta="Open dashboard" />
         <StatCard to="/admin/licensing" Icon={FileText} title="Licensing & Regulations"
-          desc="Per-state license and training requirements the AI Agent cites when answering licensing questions."
+          desc="Per-state license and training requirements AgentSword cites when answering licensing questions."
           value={lic.value} label={lic.label || 'verified'} sub={lic.sub} cta="Review licensing" />
         <StatCard to="/admin/users" Icon={Users} title="Users"
-          desc="Create accounts, assign roles, and reset passwords for AI Agent users."
+          desc="Create accounts, assign roles, and reset passwords for AgentSword users."
           value={usr.value} label={usr.label || 'users'} sub={usr.sub} cta="Manage users" />
       </div>
     </div>

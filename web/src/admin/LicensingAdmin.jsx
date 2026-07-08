@@ -97,7 +97,7 @@ export default function LicensingAdmin() {
         </button>
       </div>
       <p style={{ color: C.sub, fontSize: 13, margin: '0 2px 18px', lineHeight: 1.5 }}>
-        The per-state license and training facts the AI Agent cites when answering licensing questions.
+        The per-state license and training facts the AgentSword cites when answering licensing questions.
       </p>
 
       {!error && (
