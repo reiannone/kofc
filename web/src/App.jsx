@@ -715,6 +715,14 @@ export default function App({ user, onLogout }) {
     } catch (e) { setDealMsg(e.message); }
     finally { setDealBusy(false); }
   }
+  // Open the worksheet for viewing WITHOUT regenerating. Only auto-generate when the deal
+  // has no sheet yet — so navigating here never overwrites an existing or supervisor-edited
+  // worksheet. Regeneration stays behind the explicit Generate/Regenerate button.
+  function openSheet() {
+    setDealMsg('');
+    setView('sheet');
+    if (!dealSheet.trim()) generateSheet();
+  }
   async function generateSheet() {
     setView('sheet'); setSheetLoading(true); setDealMsg('');
     try {
@@ -795,7 +803,7 @@ export default function App({ user, onLogout }) {
           <button onClick={openDealsList} style={dealBtn} title="My scenarios in the works">
             <FolderOpen size={13} /> My Scenarios
           </button>
-          <button onClick={generateSheet} style={dealBtn} title="Generate a client scenario worksheet">
+          <button onClick={openSheet} style={dealBtn} title="Open this scenario's worksheet (does not regenerate)">
             <FileText size={13} /> Scenario worksheets
           </button>
         </div>
