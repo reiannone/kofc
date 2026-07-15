@@ -648,12 +648,15 @@ export default function App({ user, onLogout }) {
     catch (e) { setDealMsg(e.message); }
     finally { setDealBusy(false); }
   }
-  async function openDealsList() {
+  async function openDealsList(filter = 'all') {
+    setDealFilter(typeof filter === 'string' ? filter : 'all');
     setView('deals'); setDeals(null); setDealMsg('');
     try { const d = await apiGet('deal-list.php'); setDeals(d.items || []); }
     catch (e) { setDeals([]); setDealMsg(e.message); }
   }
-  async function openDeal(id) {
+  // Inventory of generated worksheets: the deals list, filtered to scenarios that have one.
+  function openWorksheets() { openDealsList('worksheets'); }
+  async function openDeal(id, preferView) {
     setDealMsg('');
     try {
       const d = await apiGet(`deal-get.php?id=${id}`);
@@ -683,7 +686,7 @@ export default function App({ user, onLogout }) {
       // open into an empty chat (looks blank) — show its sheet instead.
       const hasSheet = !!(deal.deal_sheet && deal.deal_sheet.trim());
       const hasConvo = !!deal.conversation_id && (d.messages || []).length > 0;
-      setView(hasSheet && !hasConvo ? 'sheet' : 'chat');
+      setView(preferView || (hasSheet && !hasConvo ? 'sheet' : 'chat'));
     } catch (e) { setDealMsg(e.message); }
   }
   async function shareDraft() {
@@ -800,12 +803,28 @@ export default function App({ user, onLogout }) {
           <button onClick={newConversation} style={dealBtn} title="Start a brand-new scenario">
             <Plus size={13} /> New Client Scenario
           </button>
-          <button onClick={openDealsList} style={dealBtn} title="My scenarios in the works">
+          <button onClick={() => openDealsList('all')} style={dealBtn} title="All my scenarios">
             <FolderOpen size={13} /> My Scenarios
           </button>
-          <button onClick={openSheet} style={dealBtn} title="Open this scenario's worksheet (does not regenerate)">
+          <button onClick={openWorksheets} style={dealBtn} title="Scenarios that have a generated worksheet">
             <FileText size={13} /> Scenario worksheets
           </button>
+          {view === 'chat' && (
+            dealSheet.trim()
+              ? (<>
+                  <button onClick={openSheet} style={dealBtn} title="View this scenario's worksheet">
+                    <FileText size={13} /> Open worksheet
+                  </button>
+                  <button onClick={generateSheet} style={dealBtn} title="Regenerate this scenario's worksheet">
+                    <Sparkles size={13} /> Regenerate
+                  </button>
+                </>)
+              : (
+                  <button onClick={generateSheet} style={dealBtn} title="Generate a worksheet for this scenario">
+                    <Sparkles size={13} /> Generate worksheet
+                  </button>
+                )
+          )}
         </div>
 
         {/* Row 3 — actions on THIS scenario, plus its status */}
@@ -846,7 +865,7 @@ export default function App({ user, onLogout }) {
 
   function renderDealsPanel() {
     const FILTERS = [
-      ['all', 'All'], ['draft', 'Draft'], ['submitted', 'Submitted'],
+      ['all', 'All'], ['worksheets', 'Worksheets'], ['draft', 'Draft'], ['submitted', 'Submitted'],
       ['returned', 'Returned'], ['approved', 'Approved'], ['redlined', 'Redlined'],
     ];
     const list = Array.isArray(deals) ? deals : [];
@@ -854,16 +873,18 @@ export default function App({ user, onLogout }) {
       acc.all = (acc.all || 0) + 1;
       acc[d.status] = (acc[d.status] || 0) + 1;
       if (d.review_state === 'redlined') acc.redlined = (acc.redlined || 0) + 1;
+      if (Number(d.has_sheet)) acc.worksheets = (acc.worksheets || 0) + 1;
       return acc;
     }, {});
     const shown = list.filter((d) =>
       dealFilter === 'all' ? true
+      : dealFilter === 'worksheets' ? Number(d.has_sheet)
       : dealFilter === 'redlined' ? d.review_state === 'redlined'
       : d.status === dealFilter);
     return (
       <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
-          <h3 style={{ margin: 0, fontSize: 14, color: C.navy, flex: 1 }}>My Scenarios</h3>
+          <h3 style={{ margin: 0, fontSize: 14, color: C.navy, flex: 1 }}>{dealFilter === 'worksheets' ? 'Scenario Worksheets' : 'My Scenarios'}</h3>
           <button onClick={newConversation} style={dealBtn} title="Start a new conversation"><Plus size={13} /> New Client Scenario</button>
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
@@ -879,10 +900,10 @@ export default function App({ user, onLogout }) {
         </div>
         {deals === null ? <div style={{ color: C.sub, fontSize: 13 }}>Loading…</div>
           : list.length === 0 ? <div style={{ color: C.sub, fontSize: 13 }}>No saved scenarios yet. Start a new scenario to begin.</div>
-          : shown.length === 0 ? <div style={{ color: C.sub, fontSize: 13 }}>No {dealFilter} scenarios.</div>
+          : shown.length === 0 ? <div style={{ color: C.sub, fontSize: 13 }}>{dealFilter === 'worksheets' ? 'No worksheets generated yet.' : `No ${dealFilter} scenarios.`}</div>
           : shown.map((d) => (
-              <div key={d.id} onClick={() => openDeal(d.id)} role="button" tabIndex={0}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDeal(d.id); } }}
+              <div key={d.id} onClick={() => openDeal(d.id, dealFilter === 'worksheets' ? 'sheet' : undefined)} role="button" tabIndex={0}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDeal(d.id, dealFilter === 'worksheets' ? 'sheet' : undefined); } }}
                 style={{ display: 'flex', alignItems: 'center', gap: 10, border: `1px solid ${C.border}`, borderRadius: 8, padding: '10px 12px', marginBottom: 8, cursor: 'pointer', background: '#fff' }}>
                 <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: (d.title || d.client_name) ? C.text : C.sub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {d.title || d.client_name || '(untitled scenario)'}
