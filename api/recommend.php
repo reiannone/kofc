@@ -56,6 +56,12 @@ try {
     $items   = $parsed['recommendations'] ?? [];
     $flags   = kofc_run_guardrails($profile, $items);
 
+    // Surface soft eligibility warnings (e.g. stated age vs DOB mismatch) as global flags,
+    // so the same deterministic check shows up in the review UI alongside guardrail output.
+    foreach ($elig['warnings'] as $w) {
+        $flags[] = ['item_index' => null, 'code' => 'eligibility_' . $w['field'], 'message' => $w['message']];
+    }
+
     $pdo = kofc_db();
     $stmt = $pdo->prepare(
         'INSERT INTO recommendations

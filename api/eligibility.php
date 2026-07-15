@@ -50,20 +50,32 @@ function kofc_resolve_age(array $profile): ?int
  *
  * @return array {
  *   ok:         bool,            // false if any hard violation must gate a recommendation
- *   age:        int|null,        // resolved age (explicit or derived from DOB)
+ *   age:        int|null,        // resolved age (explicit wins, else derived from DOB)
  *   violations: array<array{field:string, kind:string, message:string}>,  // kind: 'missing' | 'value'
+ *   warnings:   array<array{field:string, kind:string, message:string}>,  // soft, non-gating (kind: 'mismatch')
  *   needs:      array<array{field,label,why,importance,input_type,options}> // chip-shaped, for chat.php gaps
  * }
  *
  * 'missing' => nothing was provided, so it can be ASKED for (a chip is offered in `needs`).
  * 'value'   => a value was provided but fails the floor (e.g. under 18) — nothing to ask,
  *              the caller must explain the ineligibility instead.
+ * A 'mismatch' warning is raised when an explicit age and a DOB are BOTH present but
+ * disagree by more than a year — a data-quality flag, deliberately non-blocking, since we
+ * can't know which of the two is the typo. Deterministic arithmetic, not an AI guess.
  */
 function kofc_eligibility(array $profile): array
 {
     $violations = [];
+    $warnings   = [];
     $needs      = [];
-    $age        = kofc_resolve_age($profile);
+
+    $explicitAge = null;
+    if (isset($profile['age']) && $profile['age'] !== '' && $profile['age'] !== null && is_numeric($profile['age'])) {
+        $explicitAge = (int)$profile['age'];
+    }
+    $dobAge = !empty($profile['member_dob']) ? kofc_age_from_dob((string)$profile['member_dob']) : null;
+
+    $age = $explicitAge ?? $dobAge;   // explicit age wins; fall back to DOB-derived
 
     if ($age === null) {
         $violations[] = [
@@ -88,10 +100,21 @@ function kofc_eligibility(array $profile): array
         ];
     }
 
+    // Soft consistency check: stated age vs DOB-derived age disagree by more than a year.
+    if ($explicitAge !== null && $dobAge !== null && abs($explicitAge - $dobAge) > 1) {
+        $warnings[] = [
+            'field'   => 'age',
+            'kind'    => 'mismatch',
+            'message' => 'Stated age (' . $explicitAge . ') doesn\'t match the date of birth, which works out to '
+                       . $dobAge . '. Please confirm which is correct.',
+        ];
+    }
+
     return [
         'ok'         => count($violations) === 0,
         'age'        => $age,
         'violations' => $violations,
+        'warnings'   => $warnings,
         'needs'      => $needs,
     ];
 }

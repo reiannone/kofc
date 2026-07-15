@@ -119,6 +119,15 @@ function ageFromDob(dob) {
   return (a >= 0 && a < 130) ? a : '';
 }
 
+// Split a single full-name string into first / last for the deal-bar fields.
+// Everything after the first space becomes the last name.
+function splitFullName(full) {
+  const s = (full || '').trim();
+  if (!s) return { first: '', last: '' };
+  const i = s.indexOf(' ');
+  return i === -1 ? { first: s, last: '' } : { first: s.slice(0, i), last: s.slice(i + 1) };
+}
+
 // Build the compact "known facts" object sent to chat.php / saved on a deal. Numbers coerced,
 // age derived from DOB when not set directly. Returns null when nothing is worth sending.
 function cleanProfile(p) {
@@ -526,6 +535,11 @@ export default function App({ user, onLogout }) {
         setProfile(next);
         setFilledKeys((s) => new Set([...s, ...filled]));
         setProfileTouched(true);
+        // If a name came from the conversation, seed the deal-bar First/Last if still empty.
+        if (next.member_name && !`${firstName} ${lastName}`.trim()) {
+          const { first, last } = splitFullName(next.member_name);
+          setFirstName(first); setLastName(last);
+        }
         setPullNote('Filled from conversation: '
           + filled.map((k) => LABELS[k] || k).join(', ') + '. Review before submitting.');
       } else if (!auto) {
@@ -579,6 +593,13 @@ export default function App({ user, onLogout }) {
   }
   const flagsFor = (idx) => (result?.guardrail_flags || []).filter((f) => f.item_index === idx);
   const globalFlags = (result?.guardrail_flags || []).filter((f) => f.item_index === null);
+
+  // Live, deterministic data-quality check on the form: a stated age that disagrees with the
+  // date of birth by more than a year. Non-blocking — mirrors the soft warning in eligibility.php.
+  const _statedAge = (profile.age !== '' && profile.age != null) ? Number(profile.age) : null;
+  const _dobAgeRaw = profile.member_dob ? ageFromDob(profile.member_dob) : '';
+  const ageDobMismatch = _statedAge != null && _dobAgeRaw !== ''
+    && !Number.isNaN(_statedAge) && Math.abs(_statedAge - Number(_dobAgeRaw)) > 1;
 
   // ================= DEALS (workspace on the AgentSword tab) =================
   const [dealId, setDealId] = React.useState(null);
@@ -723,6 +744,25 @@ export default function App({ user, onLogout }) {
     return { fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: m.bg, color: m.fg, flexShrink: 0 };
   };
   const dealBtn = { display: 'flex', alignItems: 'center', gap: 5, padding: '6px 10px', fontSize: 12, border: `1px solid ${C.border}`, background: '#fff', color: C.navy, borderRadius: 6, cursor: 'pointer' };
+
+  // Keep the deal-bar First/Last name and the Recommend form's member_name in step without
+  // clobbering: fill whichever side is blank from the other. Runs on tab switch (both names
+  // fully committed by then), so it never fights mid-typing. Never overwrites a set value.
+  function syncNames() {
+    const full = (profile.member_name || '').trim();
+    const dealFull = `${firstName} ${lastName}`.trim();
+    if (full && !dealFull) {
+      const { first, last } = splitFullName(full);
+      setFirstName(first); setLastName(last);
+    } else if (!full && dealFull) {
+      setProfile((p) => (p.member_name ? p : { ...p, member_name: dealFull }));
+      setProfileTouched(true);
+    }
+  }
+  React.useEffect(() => {
+    syncNames();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   function clearForm() {
     setDealTitle(''); setFirstName(''); setLastName(''); setDealMsg('');
@@ -1163,6 +1203,12 @@ export default function App({ user, onLogout }) {
               </Field>
               {fNum('age', 'Age')}
             </div>
+            {ageDobMismatch && (
+              <div style={{ background: C.warnBg, border: `1px solid ${C.warn}`, color: C.warn, padding: '8px 10px', borderRadius: 6, marginBottom: 12, fontSize: 12, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+                <span>Stated age ({_statedAge}) doesn’t match the date of birth (works out to {_dobAgeRaw}). Please confirm which is correct.</span>
+              </div>
+            )}
             <div style={grid2}>
               {fTxt('council_number', 'Council number')}
               {fTxt('member_occupation', 'Member occupation')}
