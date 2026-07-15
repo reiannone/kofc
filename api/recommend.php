@@ -14,6 +14,7 @@ require __DIR__ . '/ai.php';
 require __DIR__ . '/guardrails.php';
 require __DIR__ . '/kb.php';
 require __DIR__ . '/prompts.php';
+require __DIR__ . '/eligibility.php';
 
 kofc_cors();
 
@@ -28,14 +29,15 @@ try {
         exit;
     }
 
-    // Derive age from DOB when age wasn't supplied (keeps the 18+ gate working either way).
-    if ((!isset($profile['age']) || $profile['age'] === '' || $profile['age'] === null) && !empty($profile['member_dob'])) {
-        $profile['age'] = kofc_age_from_dob((string)$profile['member_dob']);
+    // Universal eligibility floor — the SAME rule the advisor (chat.php) asks about, via the
+    // shared kofc_eligibility() so the two paths can't drift. Resolves age from DOB internally.
+    $elig = kofc_eligibility($profile);
+    if ($elig['age'] !== null) {
+        $profile['age'] = $elig['age']; // normalize (explicit or DOB-derived) for the prompt + audit row
     }
-
-    if (!isset($profile['age']) || (int)$profile['age'] < 18) {
+    if (!$elig['ok']) {
         http_response_code(422);
-        echo json_encode(['error' => 'age is required and must be 18+']);
+        echo json_encode(['error' => $elig['violations'][0]['message']]);
         exit;
     }
 
@@ -139,14 +141,5 @@ function kofc_extract_json(string $text): array
     return is_array($decoded) ? $decoded : ['recommendations' => []];
 }
 
-/** Whole-year age from a date-of-birth string, or null if unparseable / out of range. */
-function kofc_age_from_dob(string $dob): ?int
-{
-    try {
-        $d   = new DateTime($dob);
-        $age = (new DateTime('today'))->diff($d)->y;
-        return ($age >= 0 && $age <= 120) ? $age : null;
-    } catch (Throwable $e) {
-        return null;
-    }
-}
+// kofc_age_from_dob() now lives in eligibility.php (shared with chat.php) so the age rule
+// is defined in exactly one place.

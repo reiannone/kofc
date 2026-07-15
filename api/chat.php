@@ -18,6 +18,7 @@ require __DIR__ . '/ai.php';
 require __DIR__ . '/kb.php';
 require __DIR__ . '/prompts.php';
 require __DIR__ . '/product-gates.php';
+require __DIR__ . '/eligibility.php';
 require __DIR__ . '/licensing-lib.php';
 
 kofc_cors();
@@ -101,10 +102,46 @@ try {
         }
     }
 
+    // Universal eligibility floor (age 18+) — the SAME rule recommend.php enforces, via the
+    // shared kofc_eligibility(). Folded into the gap gate only once we're in a recommend-
+    // oriented turn (a product direction was detected), so the advisor asks for age and
+    // refuses to recommend for an under-18 member here, instead of passing it through to a
+    // 422 at recommend time. Pure info questions (no product direction) are left untouched.
+    $eligBlockMsg = '';
+    if ($gaps !== null && !AI_MOCK) {
+        $elig = kofc_eligibility($profileForGaps);
+        if (!$elig['ok']) {
+            $held = true;
+            $gaps['hold'] = true;
+            foreach ($elig['violations'] as $v) {
+                if ($v['kind'] === 'missing') {
+                    $hasAge = false;
+                    foreach ($gaps['needs'] as $n) {
+                        if (($n['field'] ?? '') === 'age') { $hasAge = true; break; }
+                    }
+                    if (!$hasAge) {
+                        foreach ($elig['needs'] as $need) {
+                            $gaps['needs'][]            = $need;
+                            $gaps['required_missing'][] = $need;
+                        }
+                    }
+                } else { // value violation (e.g. under 18): nothing to ask — must be explained
+                    $eligBlockMsg = $v['message'];
+                }
+            }
+        }
+    }
+
     // Assemble the model messages. Held -> gathering-only mode (the floor). Otherwise the
     // normal planning advisor, optionally nudged with a sharpening note.
     if ($held) {
         $messages = [['role' => 'system', 'content' => kofc_elicitation_system($gaps)]];
+        if ($eligBlockMsg !== '') {
+            $messages[] = ['role' => 'system', 'content' =>
+                'ELIGIBILITY: ' . $eligBlockMsg . ' Tell the agent this plainly, ask them to double-check '
+              . 'the member\'s date of birth or age, and do NOT recommend, name, compare, or describe any '
+              . 'product, plan, or rider. If the age is correct, the member is not eligible for these products.'];
+        }
         if ($known !== '') {
             $messages[] = ['role' => 'system', 'content' => $known];
         }
