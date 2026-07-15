@@ -4,10 +4,15 @@ import {
   Shield, Send, CheckCircle2, XCircle, AlertTriangle, Loader2, ClipboardCheck,
   Mic, Square, Volume2, VolumeX, MessageSquare, Sparkles, Plus, ThumbsUp, ThumbsDown, LogOut, Settings,
   Save, FileText, FolderOpen, ArrowLeft,
+  Bold, Italic, Strikethrough, List, ListOrdered, Heading1, Heading2, Heading3, Quote, Code, Undo2, Redo2, Link as LinkIcon, Code2,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { diffWords } from 'diff';
+import { useEditor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import LinkExt from '@tiptap/extension-link';
+import { Markdown } from 'tiptap-markdown';
 import { apiGet, apiPost } from './api.js';
 
 // Strip Markdown syntax so text-to-speech doesn't read "asterisk asterisk".
@@ -48,6 +53,90 @@ const C = {
   border: '#dfe3ea', text: '#222', sub: '#666', warn: '#b8860b', warnBg: '#fdf6e3',
   ok: '#1e7e34', no: '#b02a37', userBubble: '#2f5597', botBubble: '#ffffff',
 };
+
+// A single WYSIWYG toolbar button. onMouseDown-preventDefault keeps the editor selection
+// from collapsing when the button is clicked.
+function ToolbarBtn({ active, disabled, onClick, title, children }) {
+  return (
+    <button type="button" title={title} disabled={disabled}
+      onMouseDown={(e) => e.preventDefault()} onClick={onClick}
+      style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30,
+        borderRadius: 6, cursor: disabled ? 'default' : 'pointer',
+        border: `1px solid ${active ? C.blue : C.border}`, background: active ? '#eef3fb' : '#fff',
+        color: disabled ? '#c2c8d2' : (active ? C.blue : C.sub) }}>
+      {children}
+    </button>
+  );
+}
+
+/**
+ * WYSIWYG editor for the Scenario Worksheet. The document is edited as rich text but the
+ * STORED format stays Markdown — `value` in and `onChange` out are both Markdown strings —
+ * so the supervisor redline diff and version history keep working on the same text they
+ * always have. tiptap-markdown handles parse (setContent) and serialize (getMarkdown).
+ */
+function SheetEditor({ value, onChange, editable = true }) {
+  const editor = useEditor({
+    extensions: [
+      StarterKit,
+      LinkExt.configure({ openOnClick: false, autolink: true }),
+      Markdown.configure({ html: false, tightLists: true, bulletListMarker: '-', linkify: true, transformPastedText: true }),
+    ],
+    content: value || '',
+    editable,
+    onUpdate: ({ editor }) => onChange(editor.storage.markdown.getMarkdown()),
+  });
+
+  // External value changes (generate/regenerate a sheet, open another deal) -> load into the
+  // editor, but only when it truly differs from what's already there, so onUpdate can't loop.
+  React.useEffect(() => {
+    if (!editor) return;
+    const current = editor.storage.markdown.getMarkdown();
+    if ((value || '') !== current) {
+      editor.commands.setContent(value || '', false); // false = don't emit an update event
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, editor]);
+
+  React.useEffect(() => {
+    if (editor) editor.setEditable(editable);
+  }, [editor, editable]);
+
+  if (!editor) return null;
+  const on = (name, attrs) => editor.isActive(name, attrs);
+  const sep = <div style={{ width: 1, alignSelf: 'stretch', background: C.border, margin: '2px 4px' }} />;
+
+  return (
+    <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, background: '#fff', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, padding: 8, borderBottom: `1px solid ${C.border}`, background: '#fafbfc' }}>
+        <ToolbarBtn active={on('heading', { level: 1 })} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} title="Heading 1"><Heading1 size={16} /></ToolbarBtn>
+        <ToolbarBtn active={on('heading', { level: 2 })} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} title="Heading 2"><Heading2 size={16} /></ToolbarBtn>
+        <ToolbarBtn active={on('heading', { level: 3 })} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} title="Heading 3"><Heading3 size={16} /></ToolbarBtn>
+        {sep}
+        <ToolbarBtn active={on('bold')} onClick={() => editor.chain().focus().toggleBold().run()} title="Bold"><Bold size={16} /></ToolbarBtn>
+        <ToolbarBtn active={on('italic')} onClick={() => editor.chain().focus().toggleItalic().run()} title="Italic"><Italic size={16} /></ToolbarBtn>
+        <ToolbarBtn active={on('strike')} onClick={() => editor.chain().focus().toggleStrike().run()} title="Strikethrough"><Strikethrough size={16} /></ToolbarBtn>
+        <ToolbarBtn active={on('code')} onClick={() => editor.chain().focus().toggleCode().run()} title="Inline code"><Code size={16} /></ToolbarBtn>
+        {sep}
+        <ToolbarBtn active={on('bulletList')} onClick={() => editor.chain().focus().toggleBulletList().run()} title="Bullet list"><List size={16} /></ToolbarBtn>
+        <ToolbarBtn active={on('orderedList')} onClick={() => editor.chain().focus().toggleOrderedList().run()} title="Numbered list"><ListOrdered size={16} /></ToolbarBtn>
+        <ToolbarBtn active={on('blockquote')} onClick={() => editor.chain().focus().toggleBlockquote().run()} title="Quote"><Quote size={16} /></ToolbarBtn>
+        {sep}
+        <ToolbarBtn active={on('link')} title="Link" onClick={() => {
+          const prev = editor.getAttributes('link').href || '';
+          const url = window.prompt('Link URL', prev);
+          if (url === null) return;
+          if (url.trim() === '') { editor.chain().focus().extendMarkRange('link').unsetLink().run(); return; }
+          editor.chain().focus().extendMarkRange('link').setLink({ href: url.trim() }).run();
+        }}><LinkIcon size={16} /></ToolbarBtn>
+        {sep}
+        <ToolbarBtn disabled={!editor.can().undo()} onClick={() => editor.chain().focus().undo().run()} title="Undo"><Undo2 size={16} /></ToolbarBtn>
+        <ToolbarBtn disabled={!editor.can().redo()} onClick={() => editor.chain().focus().redo().run()} title="Redo"><Redo2 size={16} /></ToolbarBtn>
+      </div>
+      <EditorContent editor={editor} className="tt" />
+    </div>
+  );
+}
 
 // Profile keys grouped by storage type — drive clean/hydrate/merge generically.
 const NUM_KEYS = [
@@ -618,6 +707,7 @@ export default function App({ user, onLogout }) {
   const [dealSheet, setDealSheet] = React.useState('');
   const [sheetLoading, setSheetLoading] = React.useState(false);
   const [sheetSources, setSheetSources] = React.useState([]); // citation provenance for the generated sheet
+  const [sheetSourceMode, setSheetSourceMode] = React.useState(false); // WYSIWYG (default) vs raw Markdown source
   const [dealMsg, setDealMsg] = React.useState('');
   const [dealBusy, setDealBusy] = React.useState(false);
 
@@ -889,6 +979,9 @@ export default function App({ user, onLogout }) {
           <button onClick={generateSheet} disabled={sheetLoading} style={dealBtn}>
             {sheetLoading ? <Loader2 size={13} className="spin" /> : <Sparkles size={13} />} {dealSheet ? 'Regenerate' : 'Generate'}
           </button>
+          <button onClick={() => setSheetSourceMode((s) => !s)} style={dealBtn} title="Switch between the rich-text editor and the raw Markdown source">
+            <Code2 size={13} /> {sheetSourceMode ? 'Editor' : 'Source'}
+          </button>
           <button onClick={saveSheet} disabled={dealBusy || !dealSheet} style={dealBtn}><Save size={13} /> Save</button>
           <button onClick={() => setView('chat')} style={dealBtn}><ArrowLeft size={13} /> Back</button>
         </div>
@@ -920,15 +1013,20 @@ export default function App({ user, onLogout }) {
             <Loader2 size={14} className="spin" /> Writing the Scenario worksheet…
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <textarea value={dealSheet} onChange={(e) => setDealSheet(e.target.value)}
-              placeholder="Generate a sheet, then edit here…"
-              style={{ ...inputStyle, minHeight: 360, resize: 'vertical', fontFamily: 'ui-monospace, Menlo, Consolas, monospace', fontSize: 12, lineHeight: 1.5 }} />
-            <div style={{ border: `1px solid ${C.border}`, borderRadius: 6, padding: 12, background: '#fff', overflow: 'auto', minHeight: 360 }}>
-              {dealSheet.trim() ? <Md text={dealSheet} /> : <span style={{ color: C.sub, fontSize: 12 }}>Preview appears here.</span>}
-              {dealSheet.trim() && <SourceFooter sources={sheetSources} />}
-            </div>
-          </div>
+          <>
+            {sheetSourceMode ? (
+              <textarea value={dealSheet} onChange={(e) => setDealSheet(e.target.value)}
+                placeholder="Markdown source…"
+                style={{ ...inputStyle, minHeight: 420, resize: 'vertical', fontFamily: 'ui-monospace, Menlo, Consolas, monospace', fontSize: 12, lineHeight: 1.5 }} />
+            ) : (
+              <SheetEditor value={dealSheet} onChange={setDealSheet} />
+            )}
+            {dealSheet.trim() && (
+              <div style={{ border: `1px solid ${C.border}`, borderTop: 'none', borderRadius: '0 0 8px 8px', padding: '8px 12px', background: '#fafbfc' }}>
+                <SourceFooter sources={sheetSources} />
+              </div>
+            )}
+          </>
         )}
         {dealMsg && <div style={{ fontSize: 12, color: C.sub, marginTop: 8 }}>{dealMsg}</div>}
       </div>
@@ -1388,6 +1486,23 @@ export default function App({ user, onLogout }) {
         .md table{border-collapse:collapse;margin:0 0 8px;font-size:12px}
         .md th,.md td{border:1px solid ${C.border};padding:4px 8px;text-align:left}
         .md hr{border:none;border-top:1px solid ${C.border};margin:10px 0}
+        .tt .ProseMirror{min-height:360px;max-height:60vh;overflow:auto;padding:14px 16px;outline:none;font-size:13px;line-height:1.6;color:${C.text}}
+        .tt .ProseMirror:focus{outline:none}
+        .tt .ProseMirror>:first-child{margin-top:0}
+        .tt .ProseMirror>:last-child{margin-bottom:0}
+        .tt .ProseMirror p{margin:0 0 8px}
+        .tt .ProseMirror h1{font-size:18px;font-weight:700;color:${C.navy};margin:12px 0 6px;line-height:1.3}
+        .tt .ProseMirror h2{font-size:15px;font-weight:700;color:${C.navy};margin:12px 0 6px;line-height:1.3}
+        .tt .ProseMirror h3{font-size:13px;font-weight:700;color:${C.navy};margin:10px 0 4px;line-height:1.3}
+        .tt .ProseMirror ul,.tt .ProseMirror ol{margin:0 0 8px;padding-left:22px}
+        .tt .ProseMirror li{margin:2px 0}
+        .tt .ProseMirror li>p{margin:0}
+        .tt .ProseMirror blockquote{margin:0 0 8px;padding:2px 0 2px 10px;border-left:3px solid ${C.border};color:${C.sub}}
+        .tt .ProseMirror code{background:#f0f2f6;border:1px solid ${C.border};border-radius:4px;padding:1px 4px;font-size:12px;font-family:ui-monospace,Menlo,Consolas,monospace}
+        .tt .ProseMirror pre{background:#f0f2f6;border:1px solid ${C.border};border-radius:6px;padding:10px;overflow:auto;margin:0 0 8px}
+        .tt .ProseMirror pre code{background:none;border:none;padding:0}
+        .tt .ProseMirror a{color:${C.blue};text-decoration:underline}
+        .tt .ProseMirror hr{border:none;border-top:1px solid ${C.border};margin:10px 0}
       `}</style>
     </div>
   );
