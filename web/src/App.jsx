@@ -146,6 +146,36 @@ function hydrateProfile(p) {
   return out;
 }
 
+// Make a stored code readable in a chat prompt: 'income_replacement' -> 'income replacement',
+// 'yes'/'no' -> 'Yes'/'No'. Leaves free text and numbers alone.
+function humanizeVal(v) {
+  if (v === 'yes') return 'Yes';
+  if (v === 'no') return 'No';
+  if (typeof v === 'string' && /^[a-z]+(?:_[a-z]+)+$/.test(v)) return v.replace(/_/g, ' ');
+  return v;
+}
+
+// Compose the filled fact-find into one readable prompt so the agent can hand the whole
+// Recommend form to AgentSword in a single shot and get a grounded reply. Returns '' when
+// nothing is filled yet.
+function profileToPrompt(p) {
+  const lines = [];
+  Object.keys(EMPTY).forEach((k) => {
+    if (k === 'currently_employed') return;             // boolean w/ default, handled below
+    const v = p[k];
+    if (v === '' || v == null) return;
+    lines.push(`- ${LABELS[k] || k}: ${humanizeVal(v)}`);
+  });
+  if (p.currently_employed === false) lines.push(`- ${LABELS.currently_employed}: Not currently employed`);
+  if (!lines.length) return '';
+  return (
+    'Here is the client profile I have so far:\n' +
+    lines.join('\n') +
+    '\n\nBased on this, what would you recommend, and what should I confirm with the member ' +
+    'before presenting anything?'
+  );
+}
+
 // A single gap-elicitation control. Renders by input_type and writes the chosen
 // value back through onFill (which feeds the form's set()/profile sync). Holds its
 // own draft state for text/number so typing doesn't churn parent state.
@@ -330,11 +360,11 @@ export default function App({ user, onLogout }) {
   // Core chat turn. `text` is the message; `profileForSend` overrides the default
   // profile-send logic (used by chip-driven refreshes that must send freshly-filled
   // values without waiting for state to commit).
-  async function runChatTurn(text, { profileForSend } = {}) {
+  async function runChatTurn(text, { profileForSend, userMeta } = {}) {
     if (sending) return;
     if (listening) stopListening();
     setError(null);
-    setMessages((m) => [...m, { role: 'user', content: text }]);
+    setMessages((m) => [...m, { role: 'user', content: text, ...(userMeta || {}) }]);
     setPendingFills([]);
     setSending(true);
     try {
@@ -383,7 +413,7 @@ export default function App({ user, onLogout }) {
     window.speechSynthesis?.cancel();
     setMessages([]); setConvId(null); setInput(''); setError(null);
     setFb({}); setDownIdx(null); setNeeds([]); setHold(false); setPendingFills([]);
-    setPullNote(''); setFilledKeys(new Set()); autoPulledRef.current = null;
+    setPullNote(''); setFilledKeys(new Set()); lastPullRef.current = { convId: null, asst: 0 };
     setDealId(null); dealIdRef.current = null; setFirstName(''); setLastName(''); setDealTitle(''); setDealStatus('draft'); setReviewState('none'); setSharedDraft(false); setVersions(null); setSheetSources([]); setDealSheet(''); setView('chat'); setDealMsg('');
   }
 
@@ -446,7 +476,7 @@ export default function App({ user, onLogout }) {
   const [filledKeys, setFilledKeys] = React.useState(() => new Set()); // keys filled from the conversation
   const [pulling, setPulling] = React.useState(false);
   const [pullNote, setPullNote] = React.useState('');
-  const autoPulledRef = React.useRef(null); // conv id we've already auto-pulled for
+  const lastPullRef = React.useRef({ convId: null, asst: 0 }); // conv + assistant-turn count at last auto-pull
 
   const set = (k, v) => {
     setProfile((p) => ({ ...p, [k]: v }));
@@ -498,7 +528,7 @@ export default function App({ user, onLogout }) {
         setProfileTouched(true);
         setPullNote('Filled from conversation: '
           + filled.map((k) => LABELS[k] || k).join(', ') + '. Review before submitting.');
-      } else {
+      } else if (!auto) {
         setPullNote('Nothing new to fill from the conversation yet.');
       }
     } catch (e) {
@@ -508,14 +538,19 @@ export default function App({ user, onLogout }) {
     }
   }
 
-  // Auto-pull once when entering Recommend with an active conversation and an untouched form.
+  // Prefill the Recommend form from the conversation every time the agent lands on the tab
+  // with new AgentSword replies since the last pull. mergeExtracted only fills still-empty
+  // fields, so repeat pulls never overwrite anything the agent has already typed — which is
+  // what lets the two views keep feeding each other as the conversation grows.
   React.useEffect(() => {
-    if (tab === 'recommend' && convId && autoPulledRef.current !== convId && !profileTouched) {
-      autoPulledRef.current = convId;
-      pullFromConversation(true);
-    }
+    if (tab !== 'recommend' || !convId) return;
+    const asst = messages.reduce((n, m) => n + (m.role === 'assistant' ? 1 : 0), 0);
+    const seen = lastPullRef.current;
+    if (seen.convId === convId && asst <= seen.asst) return; // nothing new since last pull
+    lastPullRef.current = { convId, asst };
+    pullFromConversation(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, convId]);
+  }, [tab, convId, messages]);
 
   async function getRecommendation() {
     setError(null); setSaved(false); setLoading(true); setResult(null);
@@ -617,7 +652,7 @@ export default function App({ user, onLogout }) {
       const p = deal.profile || (deal.profile_json ? JSON.parse(deal.profile_json) : null);
       if (p) { setProfile({ ...EMPTY, ...hydrateProfile(p) }); setProfileTouched(true); }
       else { setProfile(EMPTY); setProfileTouched(false); }
-      setFilledKeys(new Set()); setPullNote(''); autoPulledRef.current = null;
+      setFilledKeys(new Set()); setPullNote(''); lastPullRef.current = { convId: null, asst: 0 };
       // Land on the most useful view. A deal with a sheet but no conversation would otherwise
       // open into an empty chat (looks blank) — show its sheet instead.
       const hasSheet = !!(deal.deal_sheet && deal.deal_sheet.trim());
@@ -668,6 +703,19 @@ export default function App({ user, onLogout }) {
     try { await ensureDeal(); setDealMsg('Scenario saved.'); }
     catch (e) { setDealMsg(e.message); }
     finally { setDealBusy(false); }
+  }
+
+  // Hand the whole Recommend fact-find to AgentSword: compose it into one prompt, jump to
+  // the chat, and fire the turn with the profile attached so the reply is grounded in it.
+  // Continues the existing conversation when there is one; otherwise starts a fresh one.
+  function askAdvisorFromProfile() {
+    const known = cleanProfile(profile);
+    const prompt = profileToPrompt(profile);
+    if (!known || !prompt) { setError('Add a few profile details first, then ask AgentSword.'); return; }
+    setError(null);
+    setTab('advisor');
+    setView('chat');
+    runChatTurn(prompt, { profileForSend: known, userMeta: { origin: 'recommend' } });
   }
 
   const pill = (s) => {
@@ -957,7 +1005,16 @@ export default function App({ user, onLogout }) {
                   borderBottomRightRadius: m.role === 'user' ? 2 : 12,
                   borderBottomLeftRadius: m.role === 'user' ? 12 : 2,
                 }}>
-                  {m.role === 'assistant' ? <Md text={m.content} /> : m.content}
+                  {m.role === 'assistant'
+                    ? <Md text={m.content} />
+                    : (<>
+                        {m.origin === 'recommend' && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', opacity: 0.85, marginBottom: 5 }}>
+                            <Sparkles size={11} /> From Recommend profile
+                          </div>
+                        )}
+                        {m.content}
+                      </>)}
                   {m.role === 'assistant' && <SourceFooter sources={m.sources} />}
                   {m.role === 'assistant' && (
                     <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -1190,11 +1247,19 @@ export default function App({ user, onLogout }) {
             {fNum('budget_monthly', 'Monthly budget (USD)')}
             {fTxt('existing_coverage', 'Existing coverage (notes)')}
             {fTxt('coverage_feeling', 'How they feel about current coverage')}
-            <button onClick={getRecommendation} disabled={loading}
-              style={{ width: '100%', marginTop: 4, padding: '10px', background: C.blue, color: '#fff', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-              {loading ? <Loader2 size={16} className="spin" /> : <Send size={16} />}
-              {loading ? 'Analyzing…' : 'Get initial recommendation'}
-            </button>
+            <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+              <button onClick={getRecommendation} disabled={loading}
+                style={{ flex: 1, padding: '10px', background: C.blue, color: '#fff', border: 'none', borderRadius: 6, fontSize: 14, cursor: loading ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                {loading ? <Loader2 size={16} className="spin" /> : <Send size={16} />}
+                {loading ? 'Analyzing…' : 'Get initial recommendation'}
+              </button>
+              <button onClick={askAdvisorFromProfile} disabled={loading || sending}
+                title="Send this profile to AgentSword and get a grounded response you can talk through"
+                style={{ flex: 1, padding: '10px', background: '#fff', color: C.navy, border: `1px solid ${C.blue}`, borderRadius: 6, fontSize: 14, cursor: (loading || sending) ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                {sending ? <Loader2 size={16} className="spin" /> : <MessageSquare size={16} />}
+                Ask AgentSword
+              </button>
+            </div>
           </section>
 
           {result && (
