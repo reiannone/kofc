@@ -872,22 +872,26 @@ export default function App({ user, onLogout }) {
             style={{ ...inputStyle, flex: '0 1 150px', minWidth: 110, padding: '7px 9px', fontSize: 13 }} />
         </div>
 
-        {/* Row 2 — actions + status */}
+        {/* Row 2 — navigation: move between scenarios and views */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={newConversation} style={dealBtn} title="Start a brand-new scenario">
             <Plus size={13} /> New Client Scenario
           </button>
+          <button onClick={openDealsList} style={dealBtn} title="My scenarios in the works">
+            <FolderOpen size={13} /> My Scenarios
+          </button>
+          <button onClick={generateSheet} style={dealBtn} title="Generate a client scenario worksheet">
+            <FileText size={13} /> Scenario worksheets
+          </button>
+        </div>
+
+        {/* Row 3 — actions on THIS scenario, plus its status */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
           <button onClick={clearForm} style={dealBtn} title="Clear the title and name fields">
             <XCircle size={13} /> Clear
           </button>
           <button onClick={saveDeal} disabled={dealBusy} style={dealBtn} title="Save work in progress">
             {dealBusy ? <Loader2 size={13} className="spin" /> : <Save size={13} />} Save
-          </button>
-          <button onClick={openDealsList} style={dealBtn} title="My scenarios in the works">
-            <FolderOpen size={13} /> My Scenarios
-          </button>
-          <button onClick={generateSheet} style={dealBtn} title="Generate an client scenario worksheet">
-            <FileText size={13} /> Scenario worksheets
           </button>
           <button onClick={submitDeal} disabled={dealBusy} style={{ ...dealBtn, borderColor: C.blue, color: '#fff', background: C.blue }} title="Submit to supervisor for review">
             <Send size={13} /> Submit
@@ -1486,7 +1490,7 @@ export default function App({ user, onLogout }) {
         .md table{border-collapse:collapse;margin:0 0 8px;font-size:12px}
         .md th,.md td{border:1px solid ${C.border};padding:4px 8px;text-align:left}
         .md hr{border:none;border-top:1px solid ${C.border};margin:10px 0}
-        .tt .ProseMirror{min-height:360px;max-height:60vh;overflow:auto;padding:14px 16px;outline:none;font-size:13px;line-height:1.6;color:${C.text}}
+        .tt .ProseMirror{min-height:360px;padding:14px 16px;outline:none;font-size:13px;line-height:1.6;color:${C.text}}
         .tt .ProseMirror:focus{outline:none}
         .tt .ProseMirror>:first-child{margin-top:0}
         .tt .ProseMirror>:last-child{margin-bottom:0}
