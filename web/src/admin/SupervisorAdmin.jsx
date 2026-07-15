@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { diffWords } from 'diff';
 import { C, cardStyle, h2Style, tag } from './theme.js';
+import { SheetEditor } from '../SheetEditor.jsx';
 import { apiGet, apiPost } from '../api.js';
 
 const TABS = [
@@ -239,6 +240,7 @@ function DealReviewDetail({ id, onActed }) {
   const [versions, setVersions] = React.useState(null);
   const [editing, setEditing] = React.useState(false);
   const [editText, setEditText] = React.useState('');
+  const [editSource, setEditSource] = React.useState(false); // WYSIWYG (default) vs raw Markdown source
   const [savingEdit, setSavingEdit] = React.useState(false);
   const [showHistory, setShowHistory] = React.useState(false);
   const [mode, setMode] = React.useState('redline'); // 'redline' | 'clean'
@@ -339,8 +341,18 @@ function DealReviewDetail({ id, onActed }) {
 
       {editing ? (
         <div>
-          <textarea value={editText} onChange={(e) => setEditText(e.target.value)}
-            style={{ width: '100%', minHeight: 280, padding: '10px', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 12, fontFamily: 'ui-monospace, Menlo, Consolas, monospace', lineHeight: 1.5, resize: 'vertical', boxSizing: 'border-box' }} />
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}>
+            <button type="button" onClick={() => setEditSource((s) => !s)} title="Switch between the rich-text editor and the raw Markdown source"
+              style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 6, padding: '4px 10px', fontSize: 11, color: C.navy, cursor: 'pointer' }}>
+              {editSource ? 'Editor' : '</> Source'}
+            </button>
+          </div>
+          {editSource ? (
+            <textarea value={editText} onChange={(e) => setEditText(e.target.value)}
+              style={{ width: '100%', minHeight: 280, padding: '10px', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 12, fontFamily: 'ui-monospace, Menlo, Consolas, monospace', lineHeight: 1.5, resize: 'vertical', boxSizing: 'border-box' }} />
+          ) : (
+            <SheetEditor value={editText} onChange={setEditText} />
+          )}
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
             <button onClick={saveEdit} disabled={savingEdit}
               style={{ background: C.blue, color: '#fff', border: 'none', borderRadius: 6, padding: '7px 14px', fontSize: 12, cursor: savingEdit ? 'default' : 'pointer' }}>
