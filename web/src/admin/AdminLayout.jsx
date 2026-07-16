@@ -2,23 +2,23 @@ import React from 'react';
 import { NavLink, Link, Outlet } from 'react-router-dom';
 import { LogOut } from 'lucide-react';
 import { C } from './theme.js';
-
 const TABS = [
-  { to: '/admin', label: 'Home', end: true },
-  { to: '/admin/knowledge', label: 'Knowledge Base' },
+  { to: '/admin', label: 'Home', end: true, adminOnly: true },
+  { to: '/admin/knowledge', label: 'Knowledge Base', adminOnly: true },
   { to: '/admin/supervisor', label: 'Supervisor' },
-  { to: '/admin/licensing', label: 'Licensing' },
-  { to: '/admin/users', label: 'Users' },
+  { to: '/admin/licensing', label: 'Licensing', adminOnly: true },
+  { to: '/admin/users', label: 'Users', adminOnly: true },
 ];
-
 export default function AdminLayout({ user, onLogout }) {
+  const isAdmin = !!user?.is_admin;
+  // Supervisors see only the tabs open to them; admins see everything.
+  const tabs = TABS.filter((t) => isAdmin || !t.adminOnly);
   const linkStyle = ({ isActive }) => ({
     color: isActive ? '#fff' : '#cdd6e6',
     background: isActive ? C.blue : 'transparent',
     textDecoration: 'none', fontSize: 13, padding: '6px 12px',
     borderRadius: 6, whiteSpace: 'nowrap',
   });
-
   return (
     <div style={{ fontFamily: 'system-ui, sans-serif', background: C.bg, minHeight: '100vh', color: C.text }}>
       <nav style={{
@@ -28,17 +28,14 @@ export default function AdminLayout({ user, onLogout }) {
         <Link to="/admin" style={{
           fontSize: 13, fontWeight: 600, letterSpacing: '.02em', opacity: 0.85,
           marginRight: 14, color: '#fff', textDecoration: 'none', whiteSpace: 'nowrap',
-        }}>AgentSword · Admin</Link>
-
-        {TABS.map((t) => (
+        }}>AgentSword · {isAdmin ? 'Admin' : 'Review'}</Link>
+        {tabs.map((t) => (
           <NavLink key={t.to} to={t.to} end={t.end} style={linkStyle}>{t.label}</NavLink>
         ))}
-
         <Link to="/" style={{
           marginLeft: 'auto', color: '#cdd6e6', textDecoration: 'none', fontSize: 13,
           padding: '6px 12px', border: '1px solid rgba(255,255,255,.25)', borderRadius: 6, whiteSpace: 'nowrap',
         }}>AgentSword ↗</Link>
-
         {user && <span style={{ fontSize: 12, opacity: 0.85, marginLeft: 10 }}>{user.username}</span>}
         {onLogout && (
           <button onClick={onLogout} title="Sign out" style={{
@@ -49,11 +46,9 @@ export default function AdminLayout({ user, onLogout }) {
           </button>
         )}
       </nav>
-
       <div style={{ maxWidth: 920, margin: '24px auto', padding: '0 16px' }}>
         <Outlet />
       </div>
-
       <style>{`
         .adm-md > :first-child{margin-top:0}
         .adm-md > :last-child{margin-bottom:0}

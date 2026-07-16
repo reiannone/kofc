@@ -5,6 +5,7 @@ import App from './App.jsx';
 import Login from './Login.jsx';
 import ChangePassword from './ChangePassword.jsx';
 import RequireAdmin from './admin/RequireAdmin.jsx';
+import RequireSupervisor from './admin/RequireSupervisor.jsx';
 import AdminLayout from './admin/AdminLayout.jsx';
 import AdminHome from './admin/AdminHome.jsx';
 import KnowledgeAdmin from './admin/KnowledgeAdmin.jsx';
@@ -12,23 +13,18 @@ import UsersAdmin from './admin/UsersAdmin.jsx';
 import SupervisorAdmin from './admin/SupervisorAdmin.jsx';
 import LicensingAdmin from './admin/LicensingAdmin.jsx';
 import { me, logout } from './api.js';
-
 function Root() {
   const [user, setUser] = React.useState(undefined); // undefined = loading, null = logged out
-
   React.useEffect(() => { me().then(setUser); }, []);
-
   async function handleLogout() {
     await logout();
     setUser(null);
   }
-
   if (user === undefined) return null;
   if (!user) return <Login onLogin={setUser} />;
   if (user.must_change) {
     return <ChangePassword onDone={() => setUser({ ...user, must_change: false })} onLogout={handleLogout} />;
   }
-
   return (
     <BrowserRouter>
       <Routes>
@@ -36,21 +32,21 @@ function Root() {
         <Route
           path="/admin"
           element={
-            <RequireAdmin user={user}>
+            <RequireSupervisor user={user}>
               <AdminLayout user={user} onLogout={handleLogout} />
-            </RequireAdmin>
+            </RequireSupervisor>
           }
         >
-          <Route index element={<AdminHome />} />
-          <Route path="knowledge" element={<KnowledgeAdmin />} />
-          <Route path="users" element={<UsersAdmin />} />
-          <Route path="supervisor" element={<SupervisorAdmin />} />
-          <Route path="licensing" element={<LicensingAdmin />} />
+          {/* Admin lands on the dashboard; a supervisor is sent straight to their console. */}
+          <Route index element={user.is_admin ? <AdminHome /> : <Navigate to="supervisor" replace />} />
+          <Route path="knowledge" element={<RequireAdmin user={user}><KnowledgeAdmin /></RequireAdmin>} />
+          <Route path="users" element={<RequireAdmin user={user}><UsersAdmin /></RequireAdmin>} />
+          <Route path="supervisor" element={<SupervisorAdmin user={user} />} />
+          <Route path="licensing" element={<RequireAdmin user={user}><LicensingAdmin /></RequireAdmin>} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );
 }
-
 createRoot(document.getElementById('root')).render(<Root />);

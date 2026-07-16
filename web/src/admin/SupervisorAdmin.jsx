@@ -766,7 +766,17 @@ function PromptsAdmin() {
   );
 }
 
-export default function SupervisorAdmin() {
+export default function SupervisorAdmin({ user }) {
+  // Admin sees every pane; supervisor sees the review-side panes only.
+  // Fails closed: if user is absent, only the supervisor subset renders.
+  const isAdmin = !!user?.is_admin;
+  const PANES = [
+    ['review', 'Review'],
+    ['feedback', 'Feedback'],
+    ['deals', 'Scenarios'],
+    ...(isAdmin ? [['retrieval', 'Retrieval'], ['prompts', 'Prompts']] : []),
+  ];
+
   const [pane, setPane] = React.useState('review');
   const [metrics, setMetrics] = React.useState(null);
   const [status, setStatus] = React.useState('new');
@@ -808,7 +818,7 @@ export default function SupervisorAdmin() {
   return (
     <div>
       <div style={{ display: 'flex', gap: 6, marginBottom: 18, borderBottom: `1px solid ${C.border}`, paddingBottom: 12 }}>
-        {[['review', 'Review'], ['feedback', 'Feedback'], ['deals', 'Scenarios'], ['retrieval', 'Retrieval'], ['prompts', 'Prompts']].map(([k, lab]) => (
+        {PANES.map(([k, lab]) => (
           <button key={k} onClick={() => setPane(k)}
             style={{ background: pane === k ? C.navy : 'transparent', color: pane === k ? '#fff' : C.sub,
               border: pane === k ? 'none' : `1px solid ${C.border}`, borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
@@ -819,8 +829,8 @@ export default function SupervisorAdmin() {
 
       {pane === 'review' && <UnifiedReview />}
       {pane === 'deals' && <DealsReview />}
-      {pane === 'retrieval' && <RetrievalTuning />}
-      {pane === 'prompts' && <PromptsAdmin />}
+      {pane === 'retrieval' && isAdmin && <RetrievalTuning />}
+      {pane === 'prompts' && isAdmin && <PromptsAdmin />}
 
       {pane === 'feedback' && (<>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 22 }}>

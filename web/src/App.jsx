@@ -1046,10 +1046,10 @@ export default function App({ user, onLogout }) {
         {user && (
           <span style={{ fontSize: 12, opacity: 0.85, marginLeft: 8 }}>{user.username}</span>
         )}
-        {user?.is_admin && (
-          <Link to="/admin" title="Admin console"
+        {user?.is_supervisor && (
+          <Link to="/admin" title={user?.is_admin ? 'Admin console' : 'Supervisor console'}
             style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', opacity: 0.9, display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, textDecoration: 'none', marginLeft: 8 }}>
-            <Settings size={16} /> Admin
+            <Settings size={16} /> {user?.is_admin ? 'Admin' : 'Review'}
           </Link>
         )}
         {onLogout && (
