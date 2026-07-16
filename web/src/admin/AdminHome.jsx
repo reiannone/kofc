@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { BookOpen, ShieldCheck, Users, FileText } from 'lucide-react';
+import { BookOpen, Users, FileText } from 'lucide-react';
 import { C } from './theme.js';
 import { apiGet } from '../api.js';
 
@@ -30,7 +30,6 @@ function StatCard({ to, Icon, title, desc, value, label, sub, cta }) {
 
 export default function AdminHome() {
   const [kb, setKb] = React.useState({ value: '…', sub: '' });
-  const [sup, setSup] = React.useState({ value: '…', sub: '' });
   const [usr, setUsr] = React.useState({ value: '…', sub: '' });
   const [lic, setLic] = React.useState({ value: '…', sub: '' });
 
@@ -42,10 +41,6 @@ export default function AdminHome() {
         setKb({ value: docs.length, label: docs.length === 1 ? 'document' : 'documents', sub: chunks ? chunks + ' chunks' : '' });
       })
       .catch(() => setKb({ value: '—', label: 'documents', sub: '' }));
-
-    apiGet('metrics.php')
-      .then((m) => setSup({ value: m.pending_review ?? 0, label: 'pending review', sub: m.feedback_total != null ? m.feedback_total + ' total' : '' }))
-      .catch(() => setSup({ value: '—', label: 'pending review', sub: '' }));
 
     apiGet('user-list.php')
       .then((u) => { const n = (u.users || []).length; setUsr({ value: n, label: n === 1 ? 'user' : 'users', sub: '' }); })
@@ -59,15 +54,12 @@ export default function AdminHome() {
   return (
     <div>
       <p style={{ color: C.sub, fontSize: 13, margin: '0 2px 20px' }}>
-        Manage the AgentSword's knowledge, supervise its answers, and administer access.
+        Manage the AgentSword's knowledge, licensing, and access.
       </p>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
         <StatCard to="/admin/knowledge" Icon={BookOpen} title="Knowledge Base"
           desc="Upload and manage the documents AgentSword retrieves from when answering."
           value={kb.value} label={kb.label || 'documents'} sub={kb.sub} cta="Manage documents" />
-        <StatCard to="/admin/supervisor" Icon={ShieldCheck} title="Supervisor"
-          desc="Review agent feedback and promote vetted answers back into retrieval."
-          value={sup.value} label={sup.label || 'pending review'} sub={sup.sub} cta="Open dashboard" />
         <StatCard to="/admin/licensing" Icon={FileText} title="Licensing & Regulations"
           desc="Per-state license and training requirements AgentSword cites when answering licensing questions."
           value={lic.value} label={lic.label || 'verified'} sub={lic.sub} cta="Review licensing" />
