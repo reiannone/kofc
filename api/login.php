@@ -23,19 +23,34 @@ try {
         http_response_code(401); echo json_encode(['error' => 'invalid credentials']); exit;
     }
 
+    // Normalise role. 'admin' and 'supervisor' are the elevated roles; anything
+    // else (including a null/blank column on legacy rows) is a plain agent.
+    $role = (string)($user['role'] ?? 'agent');
+    if ($role !== 'admin' && $role !== 'supervisor') {
+        $role = 'agent';
+    }
+
     session_regenerate_id(true);
-    $_SESSION['agent_id'] = $user['username'];
-    $_SESSION['must_change'] = (int)$user['must_change_password'];
-    if ($user['role'] === 'admin') {
+    $_SESSION['agent_id']     = $user['username'];
+    $_SESSION['must_change']  = (int)$user['must_change_password'];
+    // Authoritative role for this session. me.php and the admin guard read this.
+    $_SESSION['role']         = $role;
+
+    // Back-compat: keep the is_admin/admin_id keys the existing admin-only
+    // endpoints already check, set ONLY for true admins. Supervisors never get
+    // is_admin, so admin-only endpoints reject them without any further change.
+    if ($role === 'admin') {
         $_SESSION['is_admin'] = true;
         $_SESSION['admin_id'] = $user['username'];
     }
 
     echo json_encode([
-        'username'     => $user['username'],
-        'role'         => $user['role'],
-        'is_admin'     => $user['role'] === 'admin',
-        'must_change'  => (bool)$user['must_change_password'],
+        'username'       => $user['username'],
+        'role'           => $role,
+        'is_admin'       => $role === 'admin',
+        // "supervisor access" = supervisor OR admin. Admin implies supervisor.
+        'is_supervisor'  => $role === 'supervisor' || $role === 'admin',
+        'must_change'    => (bool)$user['must_change_password'],
     ]);
 } catch (Throwable $e) {
     error_log('login.php error: ' . $e->getMessage());

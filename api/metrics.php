@@ -1,6 +1,6 @@
 <?php
 /**
- * metrics.php — supervisor dashboard summary (admin).
+ * metrics.php — supervisor dashboard summary (supervisor or admin).
  */
 declare(strict_types=1);
 session_start();
@@ -13,7 +13,7 @@ require __DIR__ . '/admin-auth.php';
 kofc_cors();
 
 try {
-    kofc_require_admin();
+    kofc_require_supervisor();
     $pdo = kofc_db();
     $q = fn($sql) => $pdo->query($sql)->fetchAll();
 

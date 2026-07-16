@@ -1,6 +1,6 @@
 <?php
 /**
- * feedback-list.php — supervisor review queue (admin). ?status=new|approved|dismissed|promoted|all
+ * feedback-list.php — supervisor review queue (supervisor or admin). ?status=new|approved|dismissed|promoted|all
  */
 declare(strict_types=1);
 session_start();
@@ -13,7 +13,7 @@ require __DIR__ . '/admin-auth.php';
 kofc_cors();
 
 try {
-    kofc_require_admin();
+    kofc_require_supervisor();
     $status = $_GET['status'] ?? 'new';
     $allowed = ['new', 'approved', 'dismissed', 'promoted', 'all'];
     if (!in_array($status, $allowed, true)) $status = 'new';
