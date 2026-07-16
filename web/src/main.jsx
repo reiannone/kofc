@@ -28,7 +28,7 @@ function Root() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<App user={user} onLogout={handleLogout} />} />
+        <Route path="/" element={user.is_admin ? <Navigate to="/admin" replace /> : <App user={user} onLogout={handleLogout} />} />
         <Route
           path="/admin"
           element={
@@ -41,7 +41,7 @@ function Root() {
           <Route index element={user.is_admin ? <AdminHome /> : <Navigate to="supervisor" replace />} />
           <Route path="knowledge" element={<RequireAdmin user={user}><KnowledgeAdmin /></RequireAdmin>} />
           <Route path="users" element={<RequireAdmin user={user}><UsersAdmin /></RequireAdmin>} />
-          <Route path="supervisor" element={<SupervisorAdmin user={user} />} />
+          <Route path="supervisor" element={user.is_admin ? <Navigate to="/admin" replace /> : <SupervisorAdmin user={user} />} />
           <Route path="licensing" element={<RequireAdmin user={user}><LicensingAdmin /></RequireAdmin>} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

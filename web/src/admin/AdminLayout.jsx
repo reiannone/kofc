@@ -5,14 +5,18 @@ import { C } from './theme.js';
 const TABS = [
   { to: '/admin', label: 'Home', end: true, adminOnly: true },
   { to: '/admin/knowledge', label: 'Knowledge Base', adminOnly: true },
-  { to: '/admin/supervisor', label: 'Supervisor' },
+  { to: '/admin/supervisor', label: 'Supervisor', supervisorOnly: true },
   { to: '/admin/licensing', label: 'Licensing', adminOnly: true },
   { to: '/admin/users', label: 'Users', adminOnly: true },
 ];
 export default function AdminLayout({ user, onLogout }) {
   const isAdmin = !!user?.is_admin;
-  // Supervisors see only the tabs open to them; admins see everything.
-  const tabs = TABS.filter((t) => isAdmin || !t.adminOnly);
+  // Admins see the config sections only; supervisors see their console only.
+  const tabs = TABS.filter((t) => {
+    if (t.supervisorOnly) return !isAdmin;
+    if (t.adminOnly) return isAdmin;
+    return true;
+  });
   const linkStyle = ({ isActive }) => ({
     color: isActive ? '#fff' : '#cdd6e6',
     background: isActive ? C.blue : 'transparent',
@@ -32,10 +36,13 @@ export default function AdminLayout({ user, onLogout }) {
         {tabs.map((t) => (
           <NavLink key={t.to} to={t.to} end={t.end} style={linkStyle}>{t.label}</NavLink>
         ))}
-        <Link to="/" style={{
-          marginLeft: 'auto', color: '#cdd6e6', textDecoration: 'none', fontSize: 13,
-          padding: '6px 12px', border: '1px solid rgba(255,255,255,.25)', borderRadius: 6, whiteSpace: 'nowrap',
-        }}>AgentSword ↗</Link>
+        <div style={{ marginLeft: 'auto' }} />
+        {!isAdmin && (
+          <Link to="/" style={{
+            color: '#cdd6e6', textDecoration: 'none', fontSize: 13,
+            padding: '6px 12px', border: '1px solid rgba(255,255,255,.25)', borderRadius: 6, whiteSpace: 'nowrap',
+          }}>AgentSword ↗</Link>
+        )}
         {user && <span style={{ fontSize: 12, opacity: 0.85, marginLeft: 10 }}>{user.username}</span>}
         {onLogout && (
           <button onClick={onLogout} title="Sign out" style={{
