@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { BookOpen, Users, FileText } from 'lucide-react';
+import { BookOpen, Users, FileText, Scale } from 'lucide-react';
 import { C } from './theme.js';
 import { apiGet } from '../api.js';
 
@@ -30,6 +30,7 @@ function StatCard({ to, Icon, title, desc, value, label, sub, cta }) {
 
 export default function AdminHome() {
   const [kb, setKb] = React.useState({ value: '…', sub: '' });
+  const [ret, setRet] = React.useState({ value: '…', sub: '' });
   const [usr, setUsr] = React.useState({ value: '…', sub: '' });
   const [lic, setLic] = React.useState({ value: '…', sub: '' });
 
@@ -41,6 +42,15 @@ export default function AdminHome() {
         setKb({ value: docs.length, label: docs.length === 1 ? 'document' : 'documents', sub: chunks ? chunks + ' chunks' : '' });
       })
       .catch(() => setKb({ value: '—', label: 'documents', sub: '' }));
+
+    apiGet('kb-tuning-get.php')
+      .then((d) => {
+        const w = (d.config && d.config.weights) || {};
+        const n = Object.keys(w).length;
+        const k = d.config && d.config.k;
+        setRet({ value: n, label: n === 1 ? 'collection' : 'collections', sub: k != null ? 'k ' + k : '' });
+      })
+      .catch(() => setRet({ value: '—', label: 'collections', sub: '' }));
 
     apiGet('user-list.php')
       .then((u) => { const n = (u.users || []).length; setUsr({ value: n, label: n === 1 ? 'user' : 'users', sub: '' }); })
@@ -60,6 +70,9 @@ export default function AdminHome() {
         <StatCard to="/admin/knowledge" Icon={BookOpen} title="Knowledge Base"
           desc="Upload and manage the documents AgentSword retrieves from when answering."
           value={kb.value} label={kb.label || 'documents'} sub={kb.sub} cta="Manage documents" />
+        <StatCard to="/admin/retrieval" Icon={Scale} title="Retrieval"
+          desc="Tune how AgentSword weights each source collection when ranking passages to answer from."
+          value={ret.value} label={ret.label || 'collections'} sub={ret.sub} cta="Tune weighting" />
         <StatCard to="/admin/licensing" Icon={FileText} title="Licensing & Regulations"
           desc="Per-state license and training requirements AgentSword cites when answering licensing questions."
           value={lic.value} label={lic.label || 'verified'} sub={lic.sub} cta="Review licensing" />
