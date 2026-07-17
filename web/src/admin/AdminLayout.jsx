@@ -5,6 +5,7 @@ import { C } from './theme.js';
 const TABS = [
   { to: '/admin', label: 'Home', end: true, adminOnly: true },
   { to: '/admin/knowledge', label: 'Knowledge Base', adminOnly: true },
+  { to: '/admin/retrieval', label: 'Retrieval', adminOnly: true },
   { to: '/admin/supervisor', label: 'Supervisor', supervisorOnly: true },
   { to: '/admin/licensing', label: 'Licensing', adminOnly: true },
   { to: '/admin/users', label: 'Users', adminOnly: true },

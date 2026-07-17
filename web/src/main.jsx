@@ -9,6 +9,7 @@ import RequireSupervisor from './admin/RequireSupervisor.jsx';
 import AdminLayout from './admin/AdminLayout.jsx';
 import AdminHome from './admin/AdminHome.jsx';
 import KnowledgeAdmin from './admin/KnowledgeAdmin.jsx';
+import RetrievalAdmin from './admin/RetrievalAdmin.jsx';
 import UsersAdmin from './admin/UsersAdmin.jsx';
 import SupervisorAdmin from './admin/SupervisorAdmin.jsx';
 import LicensingAdmin from './admin/LicensingAdmin.jsx';
@@ -40,6 +41,7 @@ function Root() {
           {/* Admin lands on the dashboard; a supervisor is sent straight to their console. */}
           <Route index element={user.is_admin ? <AdminHome /> : <Navigate to="supervisor" replace />} />
           <Route path="knowledge" element={<RequireAdmin user={user}><KnowledgeAdmin /></RequireAdmin>} />
+          <Route path="retrieval" element={<RequireAdmin user={user}><RetrievalAdmin /></RequireAdmin>} />
           <Route path="users" element={<RequireAdmin user={user}><UsersAdmin /></RequireAdmin>} />
           <Route path="supervisor" element={user.is_admin ? <Navigate to="/admin" replace /> : <SupervisorAdmin user={user} />} />
           <Route path="licensing" element={<RequireAdmin user={user}><LicensingAdmin /></RequireAdmin>} />
