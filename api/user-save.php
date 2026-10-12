@@ -1,7 +1,7 @@
 <?php
 /**
  * user-save.php — admin: create a user, change a role, or reset a password.
- * Body: { username, role:'agent'|'admin', password? }
+ * Body: { username, role:'agent'|'supervisor'|'admin', password? }
  * New users and password resets set must_change_password = 1 (forced change on next login).
  */
 declare(strict_types=1);
@@ -12,13 +12,21 @@ require __DIR__ . '/config.php';
 require __DIR__ . '/admin-auth.php';
 kofc_cors();
 
+// Must match users.role ENUM('agent','supervisor','admin') and ROLES in web/src/admin/UsersAdmin.jsx.
+const KOFC_ROLES = ['agent', 'supervisor', 'admin'];
+
 try {
     kofc_require_admin();
     $b = json_decode(file_get_contents('php://input'), true);
     $username = is_array($b) ? trim((string)($b['username'] ?? '')) : '';
-    $role     = (($b['role'] ?? '') === 'admin') ? 'admin' : 'agent';
+    $roleIn   = is_array($b) ? (string)($b['role'] ?? '') : '';
     $password = is_array($b) ? (string)($b['password'] ?? '') : '';
     if ($username === '') { http_response_code(422); echo json_encode(['error' => 'username required']); exit; }
+    if ($roleIn === '') { $roleIn = 'agent'; }
+    if (!in_array($roleIn, KOFC_ROLES, true)) {
+        http_response_code(422); echo json_encode(['error' => 'invalid role: must be agent, supervisor, or admin']); exit;
+    }
+    $role = $roleIn;
 
     $pdo = kofc_db();
     $stmt = $pdo->prepare('SELECT role FROM users WHERE username = :u');
@@ -26,8 +34,8 @@ try {
     $existing = $stmt->fetch();
 
     if ($existing) {
-        // Guard: don't demote the last admin.
-        if ($existing['role'] === 'admin' && $role === 'agent') {
+        // Guard: don't demote the last admin (to agent OR supervisor).
+        if ($existing['role'] === 'admin' && $role !== 'admin') {
             $admins = (int)$pdo->query("SELECT COUNT(*) c FROM users WHERE role='admin'")->fetch()['c'];
             if ($admins <= 1) { http_response_code(409); echo json_encode(['error' => 'cannot remove the last admin']); exit; }
         }

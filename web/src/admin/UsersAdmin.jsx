@@ -2,6 +2,15 @@ import React from 'react';
 import { C, cardStyle, h2Style, inputStyle, primaryBtn, tag } from './theme.js';
 import { apiGet, apiPost } from '../api.js';
 
+// Roles in ascending order of privilege. Keep in sync with the whitelist in user-save.php.
+const ROLES = ['agent', 'supervisor', 'admin'];
+
+const ROLE_TAG = {
+  agent: {},
+  supervisor: { background: '#eaf6ee', color: '#1f7a3e' },
+  admin: { background: '#e7eefc', color: C.blue },
+};
+
 export default function UsersAdmin() {
   const [users, setUsers] = React.useState(null);
   const [nu, setNu] = React.useState('');
@@ -9,6 +18,7 @@ export default function UsersAdmin() {
   const [nr, setNr] = React.useState('agent');
   const [addMsg, setAddMsg] = React.useState(null);   // {text, ok}
   const [rowMsg, setRowMsg] = React.useState(null);   // {text, ok}
+  const [busy, setBusy] = React.useState(null);       // username currently being saved
 
   const load = React.useCallback(() => {
     apiGet('user-list.php')
@@ -22,8 +32,8 @@ export default function UsersAdmin() {
     if (!nu.trim() || !np) { setAddMsg({ text: 'Username and password are required.', ok: false }); return; }
     try {
       await apiPost('user-save.php', { username: nu.trim(), password: np, role: nr });
-      setAddMsg({ text: `Added ${nu.trim()}.`, ok: true });
-      setNu(''); setNp(''); load();
+      setAddMsg({ text: `Added ${nu.trim()} as ${nr}.`, ok: true });
+      setNu(''); setNp(''); setNr('agent'); load();
     } catch (e) { setAddMsg({ text: e.message, ok: false }); }
   }
 
@@ -34,9 +44,15 @@ export default function UsersAdmin() {
     catch (e) { setRowMsg({ text: e.message, ok: false }); }
   }
 
-  async function toggleRole(u) {
-    try { await apiPost('user-save.php', { username: u.username, role: u.role === 'admin' ? 'agent' : 'admin' }); setRowMsg({ text: `Role updated for ${u.username}.`, ok: true }); load(); }
-    catch (e) { setRowMsg({ text: e.message, ok: false }); }
+  async function changeRole(u, role) {
+    if (role === u.role) return;
+    setBusy(u.username);
+    try {
+      await apiPost('user-save.php', { username: u.username, role });
+      setRowMsg({ text: `${u.username} is now ${role}.`, ok: true });
+      load();
+    } catch (e) { setRowMsg({ text: e.message, ok: false }); }
+    finally { setBusy(null); }
   }
 
   async function delUser(u) {
@@ -47,6 +63,7 @@ export default function UsersAdmin() {
 
   const smBtn = { padding: '5px 10px', fontSize: 12, border: 'none', borderRadius: 6, background: C.blue, color: '#fff', cursor: 'pointer' };
   const dangerBtn = { ...smBtn, background: 'transparent', color: C.no, border: `1px solid ${C.border}` };
+  const smSelect = { ...inputStyle, padding: '4px 8px', fontSize: 12, width: 'auto', minWidth: 110 };
   const th = { textAlign: 'left', padding: '9px 10px', borderBottom: `1px solid ${C.border}`, color: C.sub, fontWeight: 600, fontSize: 11, textTransform: 'uppercase' };
   const td = { textAlign: 'left', padding: '9px 10px', borderBottom: `1px solid ${C.border}` };
 
@@ -54,7 +71,7 @@ export default function UsersAdmin() {
     <div>
       <div style={cardStyle}>
         <h2 style={h2Style}>Add user</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 120px', gap: 10, alignItems: 'end' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 140px', gap: 10, alignItems: 'end' }}>
           <label style={{ fontSize: 12, color: C.sub }}>Username
             <input style={{ ...inputStyle, marginTop: 4 }} value={nu} onChange={(e) => setNu(e.target.value)} />
           </label>
@@ -64,8 +81,7 @@ export default function UsersAdmin() {
           </label>
           <label style={{ fontSize: 12, color: C.sub }}>Role
             <select style={{ ...inputStyle, marginTop: 4 }} value={nr} onChange={(e) => setNr(e.target.value)}>
-              <option value="agent">agent</option>
-              <option value="admin">admin</option>
+              {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
           </label>
         </div>
@@ -88,13 +104,21 @@ export default function UsersAdmin() {
               <tr key={u.username}>
                 <td style={td}>{u.username}</td>
                 <td style={td}>
-                  <span style={{ ...tag, ...(u.role === 'admin' ? { background: '#e7eefc', color: C.blue } : {}) }}>{u.role}</span>
+                  <span style={{ ...tag, ...(ROLE_TAG[u.role] || {}) }}>{u.role}</span>
                 </td>
                 <td style={{ ...td, color: C.sub }}>{u.must_change_password == 1 ? 'pending password change' : '—'}</td>
                 <td style={td}>
-                  <div style={{ display: 'flex', gap: 6 }}>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     <button style={smBtn} onClick={() => resetPw(u)}>Reset PW</button>
-                    <button style={smBtn} onClick={() => toggleRole(u)}>{u.role === 'admin' ? 'Make agent' : 'Make admin'}</button>
+                    <select
+                      style={smSelect}
+                      value={u.role}
+                      disabled={busy === u.username}
+                      onChange={(e) => changeRole(u, e.target.value)}
+                      title="Change role"
+                    >
+                      {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+                    </select>
                     <button style={dangerBtn} onClick={() => delUser(u)}>Delete</button>
                   </div>
                 </td>
